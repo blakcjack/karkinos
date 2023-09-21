@@ -1,8 +1,15 @@
 ---
 title: "[Stat] Memahami Distribusi Beta (Beta Distribution) Dengan Contoh Nyata (Statistik Permainan Mobile Legend)"
 author: "Suberlin Sinaga"
-format: html
+format: pdf
 ---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
 
 ![](beta_distribution_raw.png)
 
@@ -29,3 +36,73 @@ Sekarang pertanyaannya adalah apakah benar Anda seburuk itu dalam permainan ini?
 Jawaban untuk kedua pertanyaan diatas adalah **TIDAK**. Anda tidak sehebat itu dan Anda tidak seburuuk itu pula. Lalu pertanyannya seberapa baik Anda atau orang lain yang belum pernah memainkan permainan ini? Dalam kondisi inilah, distribusi beta diperlukan.
 
 Kasus win rate yang kita hadapi dapat direpresentasikan oleh distribusi binomial (menang atau tidak dalam data pertandinga). Cara terbaik untuk merepresentasikan ekspektasi awal dari suatu kejadian adalah dengan menggunakan distribusi beta. Dijelaskan dalam distribusi beta bahwa kira-kira berapa win rate seseorang dalam sebuah permainan mobile legend sebelum dia memulai satu pertandingan pun.
+
+Nilai distribusi beta berkisar antara 0 dan 1 yang mirip dengan range nilai probabilitas. Hal ini sudah cukup memberikan kesan bahwa distribusi beta dapat digunakan untuk memecahkan kasus yang kita hadapi. Seperti distribusi lainnya, beta distribusi juga memiliki property yang melekat. Property tersebut adalah *alpha* dan *beta*.
+
+Misalkan kita mengetahui bahwa sepanjang satu season mobile legend, rata-rata tingkat kemenangan atau win rate seorang pemain adalah 65%, dengan nilai terendah-nya adalah adalah 55% dan nilai tertingginya adalah 73%.
+
+Dengan asumsi ini, kita bisa mengambil nilai alpha = 180 dan beta = 97. Ada 2 alasan kenapa saya memilih angka ini.
+
+1. Karena nilai mean dari distribusi beta di mana alpha = 180 dan beta = 97 adalah ~65%. Nilai mean dari distribusi didapat dengan formula $\frac{alpha}{alpha + beta} = \frac{180}{180 + 97} = \text{~}65%$.
+
+2. Karena nilai dari distribusi beta dengan alpha 180 dan beta 97 akan berada di antara 55% dan 73%. Ingat bahwa distribusi beta harus menyimpan semua nilai yang mungkin muncul dari distribusi probabilitasnya.
+
+```{r}
+library(ggplot2)
+alpha = 180
+beta = 97
+
+x = rbeta(10000, alpha, beta)
+
+ggplot() +
+    geom_histogram(aes(x, y = ..density..), fill = "white") +
+    stat_function(fun = function(x) dbeta(x, alpha, beta), color = "red", size = 1.5) +
+    geom_vline(aes(x), xintercept = round(mean(x),2), col = "red4", size = 1) +
+    labs(title = expression(paste("Distribusi Beta dengan ", alpha, " = 180 dan ", beta, " = 97")))
+```
+
+Seperti yang dibuktikan oleh gambar bahwa distribusi beta dengan alpha = 180 dan beta = 97, memiliki nilai tengah 65% dan berada di antara 55% dan 73%. Di sini, kita bisa katakan bahwa 65% akan menjadi angka performa awal bagi siapapun yang akan menjadi pemain mobile legend, termasuk Anda.
+
+Jadi, ketika pertama kali bermain, performa "**win rate**" Anda adalah 65%, bukan 0% dan bukan pula 100%. Lalu bagaimana jika seandainya Anda memenangkan atau kalah dalam pertandingan? Ketika Anda memenangkan pertandingan, maka nilai alpha akan bertambah 1, dan jika Anda kalah dalam pertandingan, maka nilai beta akan bertambah 1.
+
+```{r}
+library(ggplot2)
+alpha = 180
+beta = 97
+
+x = rbeta(10000, alpha, beta)
+
+ggplot() +
+    geom_histogram(aes(x, y = ..density..), fill = "white") +
+    stat_function(fun = function(x) dbeta(x, alpha, beta), color = "red", size = 1.5) +
+    stat_function(fun = function(x) dbeta(x, alpha + 1, beta), color = "green", size = 1.5) +
+    stat_function(fun = function(x) dbeta(x, alpha + 2, beta), color = "blue", size = 1.5) +
+    # labs(title = expression(paste("Distribusi Beta dengan ", alpha, " = 180 dan ", beta, " = 97")))
+    annotate("text", x = 0.55, y = 15, label = expression(paste("merah = kurva original ", alpha, " = 180 ", beta, " = 97"))) +
+    annotate("text", x = 0.55, y = 14, label = expression(paste("hijau = menang 1 match ", alpha, " = 180+1 ", beta, " = 97"))) +
+    annotate("text", x = 0.55, y = 13, label = expression(paste("biru = menang 2 match ", alpha, " = 180+2 ", beta, " = 97"))) +
+    expand_limits(x = c(0.47,0.8))
+```
+
+Nah, disini terlihat bahwa jika kamu hanya memenangkan pertandingan 2 kali berturut-turut (yang mungkin bisa saja hanya keberuntungan), performa **win rate** Anda tidak akan menjadi 100%, melainkan akan bertambah sedikit demi sedikit (bergerak dari 65% menuju ke 100%).
+
+```{r}
+ggplot() +
+    geom_histogram(aes(x, y = ..density..), fill = "white") +
+    stat_function(fun = function(x) dbeta(x, alpha, beta), color = "red", size = 1.5) +
+    stat_function(fun = function(x) dbeta(x, alpha, beta+1), color = "green", size = 1.5) +
+    stat_function(fun = function(x) dbeta(x, alpha, beta+2), color = "blue", size = 1.5) +
+    # labs(title = expression(paste("Distribusi Beta dengan ", alpha, " = 180 dan ", beta, " = 97")))
+    annotate("text", x = 0.55, y = 15, label = expression(paste("merah = kurva original ", alpha, " = 180 ", beta, " = 97"))) +
+    annotate("text", x = 0.55, y = 14, label = expression(paste("hijau = kalah 1 match ", alpha, " = 180 ", beta, " = 97+1"))) +
+    annotate("text", x = 0.55, y = 13, label = expression(paste("biru = kalah 2 match ", alpha, " = 180 ", beta, " = 97+2"))) +
+    expand_limits(x = c(0.47,0.8))
+```
+
+Begitu juga sebaliknya, ketika Anda bertanding 2 kali berturut-turut dan mengalami kekalahan, performa **win rate** Anda tidak akan menjadi 0%, melainkan menurut sedikit demi sedikit dari 65% menuju 05.
+
+Dari sini kita mengetahui bahwa distribusi beta adalah distribusi yang tepat untuk merepresentasikan distribusi probabilitas yang kita tidak tahu secara pasti nilainya. Namun kita masih memiliki data dan fakta yang cukup untuk membuat tebakan yang masuk akal.
+
+Referensi : [Understanding the beta distribution (using baseball statistics)](http://varianceexplained.org/statistics/beta_distribution_and_baseball/)
+
+
