@@ -1,0 +1,31 @@
+---
+title: "[Stat] Memahami Distribusi Beta (Beta Distribution) Dengan Contoh Nyata (Statistik Permainan Mobile Legend)"
+author: "Suberlin Sinaga"
+format: html
+---
+
+![](beta_distribution_raw.png)
+
+    Pada dasarnya banyak pelajar statistika pemula mengetahui beberapa jenis distribusi seperti normal, binomial, dan distribusi seragam. Namun, banyak diantara mereka yang tidak mengetahui apa itu distribusi beta. Padahal konsep dibalik distribusi beta sangatlah menarik dan berguna.
+    
+Banyak pelajar pemula dalam ilmu statistik memiliki pemahaman yang baik akan distribusi normal, binomial, dan atau seragam. Namun sayangnya, banyak dari pemula yang tidak memiliki pemahaman yang memadai terhadap distribusi beta.
+
+Hal ini disebabkan karena distribusi seperti distribusi normal, binomial, dan atau distribusi seragam dijelaskan dengan sangat baik, lengkap dan jelas dalam berbagai literatur. Sementara distribusi beta hanya akan dibahas pada kondisi-kondisi tertentu dan dengan penjelasan yang sulit dimengerti.
+
+Berkaca pada fenomena ini, disini saya berusaha untuk mencoba menjelaskan apa itu distribusi beta dan bagaimana penggunaannya dalam kehidupan nyata.
+
+Secara sederhana, distribusi beta dapat diartikan sebagai distribusi probabilitas dari probabilitas.  Dimana, beta distribusi ini mewakili semua nilai yang mungkin dari sebuah probabilitas ketika kita tidak tahu nilai probabilitasnya.
+
+Hmmmm, apakah Anda sudah mulai bingung? Baiklah, bayangkan bahwa Anda akan bermain permainan mobile legend (atau permainan apapun yang Anda sukai). Ketika akan bermain, Anda akan berpikir atau bertanya: "Seberapa hebat saya dalam permainan ini?". Misalkan "kehebatan" ini diukur dengan "**win rate**", yang rumusnya adalah $\frac{\text{jumlah kemenangan}}{\text{total pertandingan}}$.
+
+Misalkan, Anda bermain 3 pertandingan. Dalam 3 pertandingan ini, Anda menang 3 kali berturut-turut. Maka Anda akan memiliki metric win rate sebesar 3/3 atau 100%. Wah kalau begini, tentu Anda akan merasa bahwa Anda adalah orang terhebat dalam jagat permainan mobile legend karena Anda mendapatkan win rate sebesar 100% dalam 3 pertandingan pertama.
+
+Lalu pertanyannya, benarkah bahwa Anda sehebat itu dalam permainan ini? Faktanya, permainan awal dalam mobile legend ketika Anda membuat akun baru adalah melawan robot AI.
+
+Sekarang, misalkan Anda sudah tidak melawan AI, Anda menjalani 3 pertandingan pertama melawan player lain. Kemudian dari 3 pertandingan tersebut, Anda mengalami kekalahan sebanyak 3 kali. Sehingga win rate Anda adalah 0/3 atau 0%.
+
+Sekarang pertanyaannya adalah apakah benar Anda seburuk itu dalam permainan ini?
+
+Jawaban untuk kedua pertanyaan diatas adalah **TIDAK**. Anda tidak sehebat itu dan Anda tidak seburuuk itu pula. Lalu pertanyannya seberapa baik Anda atau orang lain yang belum pernah memainkan permainan ini? Dalam kondisi inilah, distribusi beta diperlukan.
+
+Kasus win rate yang kita hadapi dapat direpresentasikan oleh distribusi binomial (menang atau tidak dalam data pertandinga). Cara terbaik untuk merepresentasikan ekspektasi awal dari suatu kejadian adalah dengan menggunakan distribusi beta. Dijelaskan dalam distribusi beta bahwa kira-kira berapa win rate seseorang dalam sebuah permainan mobile legend sebelum dia memulai satu pertandingan pun.
