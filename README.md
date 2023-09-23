@@ -42,6 +42,8 @@ Data modeling is the final part of the machine learning flow. It consists of the
 
 * Model training.
 
+* Model tuning.
+
 * Model evaluation.
 
 * Model deployment.
