@@ -1,0 +1,8 @@
+---
+title: "Modeling Plan"
+format: pdf
+---
+
+    This document will list all the projects published in this reporsitory. This projects inspired by : [Data Science Portfolio](https://github.com/KhanAjmal007/Data-Science-Portfolio/tree/main)
+    
+# General Projects
