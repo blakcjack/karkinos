@@ -6,15 +6,15 @@ Karkinos is a part of DAAC (Data as a Content) project. This project stores all 
 
 Data analysis in this section is included data visualization, and exploratory data analysis.
 
-* 1. Problem Statement. Problem statement is about what is the problem that we are trying to fix. In data analysis, it is crucial to have the question about what I will be find out.
+* Problem Statement. Problem statement is about what is the problem that we are trying to fix. In data analysis, it is crucial to have the question about what I will be find out.
 
-* 2. Data Collection. Data collection is a process to collect the data, either it is through API or direct dowloading from the source.
+* Data Collection. Data collection is a process to collect the data, either it is through API or direct dowloading from the source.
 
-* 3. Data Description. A short description about the field of the data. This will give short but powerfull understanding about the data field.
+* Data Description. A short description about the field of the data. This will give short but powerfull understanding about the data field.
 
-* 4. Data Exploration. The technique to generate data exploration in this section is by answering some business question, and then display the data to answer them. The question asked should support the main problem statement.
+* Data Exploration. The technique to generate data exploration in this section is by answering some business question, and then display the data to answer them. The question asked should support the main problem statement.
 
-* 5. Conclusion. Conclusion is important part of the data analysis. Without any conclusion the analysis is just an exploration without any mean.
+* Conclusion. Conclusion is important part of the data analysis. Without any conclusion the analysis is just an exploration without any mean.
 
 ## ML FLOW STANDARD
 
