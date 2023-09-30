@@ -428,9 +428,11 @@ After doing some data exploration, there are some conclusions that I can draw.
 For this titanic use case, I will split the data into 3 types of data. The first one is validation test which is the `test` set coming from the competition where the result will be submitted. The `train` set data from the competition will be separated into `train` set and `test` set.
 
 ```{r echo=TRUE}
-validation_set <- titanic_test_set
+validation_set <- titanic_raw_all %>% 
+    filter(source == "test set") %>% 
+    select(-source)
 
-i_train <- initial_split(titanic_training_set, prop = 3/4)
+i_train <- initial_split(titanic_raw_all %>% filter(source == "train set") %>% select(-source), prop = 3/4)
 
 train_set <- training(i_train)
     
@@ -441,7 +443,14 @@ test_set <- testing(i_train)
 
 ### Data Preprocessing
 
-In this preprocessing data, I will use 4C frameworks (correcting, completing, creating, converting) and tidy principal.
+In this preprocessing data, I will use 4C frameworks (correcting, completing, creating, converting) and tidy principal. I will create a recipe where survived is the outcome. Variable of sex, age, fare, embarked, pclass, sib_sp and parch will be predictor variables by default.
+
+```{r}
+my_recipe <- recipe(train_set) %>% 
+    update_role(survived, new_role = "outcome") %>% 
+    update_role(sex, age, fare, embarked, pclass, sib_sp, parch, new_role = "predictor")
+```
+
 
 #### Correcting
 
@@ -455,12 +464,33 @@ titanic_raw_all %>%
     DataExplorer::plot_missing(missing_only = TRUE, theme_config = used_theme)
 ```
 
-Previously, there were 3 variables have missing values. But now, the plot stated that there is only 2 variables. The reason behind this is that the missing values on embarked variable is not missing values, instead it is an empty string (""). Hence, I will convert it first to missing values in order to ensure that it is acknowledged as missing values.
+Previously, there were 3 variables have missing values. But now, the plot stated that there is only 2 variables. The reason behind this is that the missing values on embarked variable is not missing values, instead it is an empty string (""). Hence, I need to convert it first to missing values in order to ensure that it is acknowledged as missing values.
 
 ```{r}
 titanic_raw_all %>% 
     select(-c(source,survived)) %>% 
     mutate(embarked = if_else(embarked == "", NA, embarked)) %>% 
     DataExplorer::plot_missing(missing_only = TRUE, theme_config = used_theme)
+```
+
+Now, the question is how I will deal with the missing values? Dealing with the missing values can be a bit tricky. Mostly it depends on data type and data distribution. When the data type is categorical, usually the mode is used to fill out the missing values. When the data type is numerical variable, it will depend on the distribution of the data.
+
+Based on this understanding, the embarked variable will be filled using mode. I think for the age variable can be filled using mean, and the fare variable can be filled using median.
+
+```{r filling_missing_values, echo=TRUE}
+my_recipe %<>% 
+    step_mutate(embarked = if_else(embarked == "", NA, embarked)) %<>% 
+    step_impute_mean(age) %<>% 
+    step_impute_mode(embarked) %<>% 
+    step_impute_median(fare)
+```
+
+#### Creating
+
+The new variable I want to create is family number by adding parent, children, sibling, and spouse all together.
+
+```{r}
+my_recipe %>% 
+    step_mutate(family_num = parch + sib_sp)
 ```
 
