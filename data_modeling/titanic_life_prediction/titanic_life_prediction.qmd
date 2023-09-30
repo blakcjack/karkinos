@@ -1,12 +1,18 @@
 ---
 title: "Titanic Life Prediction"
-format: pdf
+format:
+  pdf:
+    highlight-style: dracula
+    code-block-bg: true
+    code-block-border-left: "#c3402a"
+    fontfamily: SourceSansPro-Regular
+mainfont: "SourceSansPro-Regular"
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r setup_chunk, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 
 # importing library
 suppressPackageStartupMessages({
@@ -16,7 +22,6 @@ suppressPackageStartupMessages({
 })
 
 # Theming section
-
 used_theme <- theme_tq(base_size = 12) +
     theme(plot.background = element_rect(fill = "#1A1A1A"),
           panel.background = element_rect(fill = "#1A1A1A"),
@@ -73,7 +78,7 @@ In this data exploration, I will simply see how each variable distributed and re
 titanic_raw_all %>% str()
 ```
 
-Here I have 13 variables, from PassengerId and Survived. The source variable is an addition to mark where the data comes from, so basically I have only 12 variables come from the data. First thing I notice here is that the name of the variable is not following `snake_case` format. Hence I will first standardized them.
+Here I have 13 variables, from PassengerId to Survived. The source variable is an addition to mark where the data comes from, so basically I have only 12 variables come from the data. First thing I notice here is that the name of the variable is not following `snake_case` format. Hence I will first standardized them.
 
 ```{r, echo=TRUE}
 titanic_raw_all %<>% janitor::clean_names()
@@ -103,32 +108,7 @@ The graph shows that people who survive on the training data is 342 and the one 
 
 This variable is basically just a random value assigned to the passenger. It purposes is to easily identify the passenger uniquely.
 
-#### 3. Pclass Variable
-
-Pclass variable is a variable that describes what so called as socio-economic status. It is divided into 3 level, level 1 is for upper level, level 2 is for middle level and level 3 is for lower level. Considering the function of the field, it is best to be casted into ordinal factor instead of integer.
-
-```{r}
-titanic_raw_all %>% 
-    mutate(pclass = factor(pclass, level = c(1,2,3))) %>% 
-    ggplot(aes(x = pclass)) +
-    geom_bar() +
-    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 1)
-```
-
-As the graph shown, that people with lowest tier of the ticket is much more than the people with high tier ticket type. Now, I wonder for each type of the ticket, is there any difference of survival life? Is the higher of the ticket class, the better the survival life will be?
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(pclass = factor(pclass, level = c(1,2,3)),
-           survived = as.factor(survived)) %>% 
-    ggplot(aes(x = pclass)) +
-    geom_bar(aes(fill = survived), position = "fill")
-```
-
-The graph clearly indicated that the higher the ticket class, then the higher the survival life is. I think this graph itself is enough to state that the pclass variable is related to the survival rate.
-
-#### 4. Name Variable
+#### 3. Name Variable
 
 In simple, name is something that everybody has. It is attached to a person but not unique for each person. I and you might have the same name. So basically, it just a random values attached to us to identify ourself and nothing to do with survival life. Naturally it will and should be deleted. But in this titanic class, name comes with a unique thing that furhter can be used to identify your socio economic class, such as Mr, Mrs, Jonkheer, etc.
 
@@ -161,9 +141,21 @@ titanic_raw_all %>%
 
 As expected, the people with "Mr" has low survival rate compare to Miss and Mrs. This is natural since man was destined to protect women. As for "Master", they might bring their helper that willing to sacrifice their life to protect the master. As the graph says, this information not only telling me about gender but also about their survival life across social level.
 
-#### 5. Sex variable
+#### 4. Sex variable
 
-Previously from name variable, we can see both gender and socio-economic class. We know that those people with prefix "Mr" will have low survival rate. Now, the question is, is it related to the gender, or is it related to the status.
+Previously from `name` variable, I can see both gender and socio-economic class have impact to the survival rate. I know that those people with prefix "Mr" will have low survival rate. Now, the question is, is it true that gender itself has a great impact to the survival rate?
+
+```{r}
+titanic_raw_all %>% 
+  filter(!is.na(survived)) %>% 
+  mutate(survived = as.factor(survived)) %>% 
+  ggplot(aes(x = sex)) +
+  geom_bar(aes(fill = survived), position = "fill")
+```
+
+In simple, the gender totally affects the survival rate. If you are a man, then you simply have less than 25% probability to survive. While, if you are woman you might have a probability to survive about 75%.
+
+Finding this knowledge, now I would like to check if the previous SES from name has something to do with the gender.
 
 ```{r}
 titanic_raw_all %>% 
@@ -177,7 +169,48 @@ titanic_raw_all %>%
     facet_wrap(.~sex, scales = "free_x")
 ```
 
-The graph covers more interesting information for me. On the "other" female, almost all the category is survived while for "other" male, it seems most of them are not survived. Compare to "Miss" category, the "Mrs" seems have higher survival rate. One of the reason that can explain is maybe they sacrificed their life for their children.
+The graph covers even more interesting information for me. On the "other" female, almost all the category is survived while for "other" male, it seems most of them are not survived. Compare to "Miss" category, the "Mrs" seems have higher survival rate. One of the reason that can explain is maybe they sacrificed their life for their children.
+
+Another interesting thing is the master category on male gender, it has the highest survival rate among the other categories. As we know, this title is for children from a noble family. Hence, in my opinion this indicates that maybe instead of gender and SES, age also affects the survival rate.
+
+#### 5. Pclass Variable
+
+Pclass variable is a variable that describes what so called as socio-economic status. It is divided into 3 level, level 1 is for upper level, level 2 is for middle level and level 3 is for lower level. Considering the function of the field, it is best to be casted into ordinal factor instead of integer.
+
+```{r}
+titanic_raw_all %>% 
+    mutate(pclass = factor(pclass, level = c(1,2,3))) %>% 
+    ggplot(aes(x = pclass)) +
+    geom_bar() +
+    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 1)
+```
+
+As the graph shown, that people with lowest tier of the ticket is much more than the people with high tier ticket type. Now, I wonder for each type of the ticket, is there any difference of survival life? Is the higher of the ticket class, the better the survival life will be?
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(pclass = factor(pclass, level = c(1,2,3)),
+           survived = as.factor(survived)) %>% 
+    ggplot(aes(x = pclass)) +
+    geom_bar(aes(fill = survived), position = "fill")
+```
+
+The graph clearly indicated that the higher the ticket class, then the higher the survival life is. I think this graph itself is enough to state that the pclass variable is related to the survival rate.
+
+Now, the next question for me, is there any difference between the pclass among the gender?
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(pclass = factor(pclass, level = c(1,2,3)),
+           survived = as.factor(survived)) %>% 
+    ggplot(aes(x = pclass)) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    facet_wrap(. ~ sex)
+```
+
+What can I say from the graph is that, even across the gender the main rules of the pclass is still the same, the higher the class the better the survival rate.
 
 #### 6. Age Variable
 
@@ -210,7 +243,12 @@ titanic_raw_all %>%
     annotate("text", x = 40, y = 74, label = "The survival rate for age \nbetween 15 and 56 dropped so deep.", col = "#ffdabd", size = 2) +
     annotate("rect", xmin = 0, xmax = 8, ymin = 0, ymax = 40, col = "green",
              alpha = 0) +
-    annotate("text", x = 4, y = 47, label = "The drop not that big for\nage between 0-8 years", col = "green", size = 2)
+    annotate("text", x = 4, y = 47, label = "The drop not that big for\nage between 0-8 years", col = "green", size = 2) +
+    labs(fill = "Survived",
+         title = "Age Distribution Among the Survival Condition",
+         x = "Passenger's Age",
+         y = "Count",
+         caption = "@2023 Suberlin Sinaga")
 ```
 
 The next question comes to my head is then, how age survival distributed across gender? Did this condition happen for all gender, or there is another condition on gender level?
@@ -411,17 +449,21 @@ Considering this, I think this variable can be used to add prediction power for 
 
 After doing some data exploration, there are some conclusions that I can draw.
 
-1. Some variables are not properly stored. For example, the survived and pclass variables should be stored in factor instead of integer. The sex, name and embarked variables also should be stored in factor instead of character or string.
+1. Passenger ID and ticket is just a random variables that bring no effect to the data. These variables should be just dropped without any further exploration.
 
-2. Some variables seem not have any effect to the survival rate and better to be dropped. For example, the passenger_id and ticket. These variables are just random variable assigned to identify the ticket and the passenger uniquely.
+2. Name variable is another random variable, but it contains what is known as SES data such as Mr, Mrs, Miss, etc. So the name variable will only be able to **be deleted** after the feature extraction done.
 
-3. Some features should be extracted to get another useful features. For example, the name variable contains Socio Economic Status (SES) that is proven able to explain the survival condition.
+3. Cabin variables are just have so many missing values and it is impossible to extract any information from it, so I will just drop it out.
 
-4. Some variables might need to be merged with another variables to bring better explanation. For example, the variable parch and sib_sp gives me better explanation about the survival condition when joined than the separated one.
+4. Socio economic status from name, sex, pclass, age, family number, fare and embarked variables have significant effect tot he survival rate.
 
-5. Due to low data points, some data might need to capped or lumped. For example, the SES categories extracted from name variable, might need to be simplified. Another example is number of parents, children, sibling and spouse might need to be capped.
+5. Survived, pclass, embarked, name, and sex variables have assigned to wrong data type. Those are more approriate to be stored as factor.
 
-6. There are found some missing data to deal with. Variable such as embarked, age, and fare.
+6. Variables like embarked, age and fare have missing values that have to deal with.
+
+7. New variable such as number of family seems to have more significant effect to the survival rate compare to sibling and spouse, and parent and children alone.
+
+8. Some categories such as the SES categories extracted from name variable might need to lumped into fewer to avoid overfitting due to low data points.
 
 ### Data Splitting
 
@@ -490,7 +532,15 @@ my_recipe %<>%
 The new variable I want to create is family number by adding parent, children, sibling, and spouse all together.
 
 ```{r}
-my_recipe %>% 
+my_recipe %<>% 
     step_mutate(family_num = parch + sib_sp)
+```
+
+#### Converting
+
+Converting is meant to convert the data type into what it should be. Previously, I have found out that some variables need to be converted into certain types. For example, pclass needs to be converted into ordinal factor since it is stored as integer. Surived, embarked, name and sex variables should also be stored as factor.
+
+```{r}
+#| echo: true
 ```
 
