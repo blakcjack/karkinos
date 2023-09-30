@@ -1,0 +1,466 @@
+---
+title: "Titanic Life Prediction"
+format: pdf
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup_chunk, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# importing library
+suppressPackageStartupMessages({
+    library(dplyr)
+    library(tidymodels)
+    library(tidyquant)
+})
+
+# Theming section
+
+used_theme <- theme_tq(base_size = 12) +
+    theme(plot.background = element_rect(fill = "#1A1A1A"),
+          panel.background = element_rect(fill = "#1A1A1A"),
+          strip.background = element_rect(fill = "#1A1A1A"),
+          text = element_text(colour = "#e0e0e0", face = "bold"),
+          axis.text = element_text(colour = "#e0e0e0"),
+          strip.text = element_text(colour = "#e0e0e0"),
+          legend.box.background = element_rect(fill = "#c3402a"),
+          legend.background = element_rect(fill = "#c3402a"),
+          legend.key = element_rect(fill = "#c3402a"),
+          legend.position = "bottom",
+          plot.caption = element_text(color = "#e0e0e0", size = 8),
+          panel.grid.minor = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_line(colour = "#8C0000", linewidth = 0.2),
+          plot.subtitle = element_text(size = 10),
+          
+    )
+
+
+theme_set(used_theme)
+# set up some function to avoid load the whole package
+`%<>%` <- magrittr::`%<>%`
+```
+
+
+## DATA PREPARATION
+
+### Data Import
+
+The data comes from famous [kaggle titanic](https://www.kaggle.com/competitions/titanic) problem set.
+
+```{r, echo=TRUE}
+titanic_training_set <- read.csv(here::here("data/titanic/train.csv"))
+titanic_test_set <- read.csv(here::here("data/titanic/test.csv"))
+```
+
+Since in this early dataset the training and testing set was separated, I will combine them to ensure that I explore all the data as a whole.
+
+```{r, echo=TRUE}
+titanic_raw_all <- rbind(
+    titanic_test_set %>% mutate(Source = "test set", Survived = NA),
+    titanic_training_set %>% mutate(Source = "train set")
+)
+```
+
+Naturally, the testing set has no target variable, hence I set the target variable values into `NA` when the data came from testing set.
+
+### Data Exploration
+
+In this data exploration, I will simply see how each variable distributed and related to the target variable. Before zooming into each variable, I will see the whole variable first to get the big picture about the data.
+
+```{r}
+titanic_raw_all %>% str()
+```
+
+Here I have 13 variables, from PassengerId and Survived. The source variable is an addition to mark where the data comes from, so basically I have only 12 variables come from the data. First thing I notice here is that the name of the variable is not following `snake_case` format. Hence I will first standardized them.
+
+```{r, echo=TRUE}
+titanic_raw_all %<>% janitor::clean_names()
+
+titanic_raw_all %>% str()
+```
+
+Now, the column names have followed the snake case format. The next step is to explore each variable to see how they distributed and related to the target variable.
+
+#### 1. Survived Variable
+
+This variable is basically a binary variable where the value is either 0 or 1 that represents whether the passenger will survive from the disaster or not. Consider the data, it should be stored as factor but yet the data was stored in `integer` data type.
+
+Since basically this variable is not available in the test set, so naturally I will explore them from training set data only.
+
+```{r}
+titanic_training_set %>% 
+    mutate(Survived = as.factor(Survived)) %>% 
+    ggplot(aes(x = Survived, y = after_stat(count))) +
+    geom_bar(width = 0.5) +
+    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 1)
+```
+
+The graph shows that people who survive on the training data is 342 and the one that is not survived is 549. The ratio between them is 1 : 1.6 which can be categorized as balance dataset.
+
+#### 2. Passengerid Variable
+
+This variable is basically just a random value assigned to the passenger. It purposes is to easily identify the passenger uniquely.
+
+#### 3. Pclass Variable
+
+Pclass variable is a variable that describes what so called as socio-economic status. It is divided into 3 level, level 1 is for upper level, level 2 is for middle level and level 3 is for lower level. Considering the function of the field, it is best to be casted into ordinal factor instead of integer.
+
+```{r}
+titanic_raw_all %>% 
+    mutate(pclass = factor(pclass, level = c(1,2,3))) %>% 
+    ggplot(aes(x = pclass)) +
+    geom_bar() +
+    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 1)
+```
+
+As the graph shown, that people with lowest tier of the ticket is much more than the people with high tier ticket type. Now, I wonder for each type of the ticket, is there any difference of survival life? Is the higher of the ticket class, the better the survival life will be?
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(pclass = factor(pclass, level = c(1,2,3)),
+           survived = as.factor(survived)) %>% 
+    ggplot(aes(x = pclass)) +
+    geom_bar(aes(fill = survived), position = "fill")
+```
+
+The graph clearly indicated that the higher the ticket class, then the higher the survival life is. I think this graph itself is enough to state that the pclass variable is related to the survival rate.
+
+#### 4. Name Variable
+
+In simple, name is something that everybody has. It is attached to a person but not unique for each person. I and you might have the same name. So basically, it just a random values attached to us to identify ourself and nothing to do with survival life. Naturally it will and should be deleted. But in this titanic class, name comes with a unique thing that furhter can be used to identify your socio economic class, such as Mr, Mrs, Jonkheer, etc.
+
+```{r}
+name_decoder <- function(x) {
+    x = as.character(x)
+    ses_name = sapply(x, function(y) { strsplit(y, ", ")[[1]][2]})
+    identifier_name = sapply(ses_name, function(x) {strsplit(x, ".", fixed = TRUE)[[1]][1]})
+    return(identifier_name)
+}
+titanic_raw_all %>% 
+    mutate(names = name_decoder(name)) %>% 
+    ggplot(aes(x = forcats::fct_infreq(names))) +
+    geom_bar() +
+    theme(axis.text.x = element_text(angle = 90))
+```
+
+The graph indicates that each names has the ses values. It is dominated by 4 big categories on overall data. I think it is safe to just lumped the rest as `other` categories instead.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(names = name_decoder(name),
+           survived = as.factor(survived)) %>% 
+    mutate(names = case_when(names %in% c("Mr", "Miss", "Mrs", "Master") ~ names, TRUE ~ "other")) %>% 
+    ggplot(aes(x = forcats::fct_infreq(names))) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    theme(axis.text.x = element_text(angle = 90))
+```
+
+As expected, the people with "Mr" has low survival rate compare to Miss and Mrs. This is natural since man was destined to protect women. As for "Master", they might bring their helper that willing to sacrifice their life to protect the master. As the graph says, this information not only telling me about gender but also about their survival life across social level.
+
+#### 5. Sex variable
+
+Previously from name variable, we can see both gender and socio-economic class. We know that those people with prefix "Mr" will have low survival rate. Now, the question is, is it related to the gender, or is it related to the status.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(names = name_decoder(name),
+           survived = as.factor(survived)) %>% 
+    mutate(names = case_when(names %in% c("Mr", "Miss", "Mrs", "Master") ~ names, TRUE ~ "other")) %>% 
+    ggplot(aes(x = forcats::fct_infreq(names))) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    theme(axis.text.x = element_text(angle = 90)) +
+    facet_wrap(.~sex, scales = "free_x")
+```
+
+The graph covers more interesting information for me. On the "other" female, almost all the category is survived while for "other" male, it seems most of them are not survived. Compare to "Miss" category, the "Mrs" seems have higher survival rate. One of the reason that can explain is maybe they sacrificed their life for their children.
+
+#### 6. Age Variable
+
+Age represents how old the passenger of the ship. In terms of survival rate, basically I would like to say that teenager might have higher survival rate than children or older people. But, before going further, I would like to check the distribution of the data first.
+
+```{r}
+titanic_raw_all %>% 
+    ggplot(aes(x = age)) +
+    geom_histogram()
+```
+
+The histogram of the age indicates that the passenger's age is ranging from ~0 to 80 years old. The warning message indicates that there are about 263 missing values on age variable. Now, the question is then how age is currently related to survival rate? Is it true that teenager might have higher survival rate?
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = age)) +
+    geom_histogram(aes(fill = as.factor(survived)))
+```
+
+Very interesting. Basically we can say that for survival condition, the lesser the age, then the higher the probability to survive. It is shown in the plot on survived condition, where the older age survival height dropped so much while for the lesser age not getting that deep. Take a look the following chart.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = age)) +
+    geom_histogram(aes(fill = as.factor(survived))) +
+    annotate("rect", xmin = 14, xmax = 56, ymin = 0, ymax = 80, col = "#ffdabd",
+             alpha = 0) +
+    annotate("text", x = 40, y = 74, label = "The survival rate for age \nbetween 15 and 56 dropped so deep.", col = "#ffdabd", size = 2) +
+    annotate("rect", xmin = 0, xmax = 8, ymin = 0, ymax = 40, col = "green",
+             alpha = 0) +
+    annotate("text", x = 4, y = 47, label = "The drop not that big for\nage between 0-8 years", col = "green", size = 2)
+```
+
+The next question comes to my head is then, how age survival distributed across gender? Did this condition happen for all gender, or there is another condition on gender level?
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = age)) +
+    geom_histogram(aes(fill = as.factor(survived))) +
+    facet_wrap(. ~ sex)
+```
+
+Wonderful findings. In fact, the dropping survival rate for the older age is for men only. For the women the drop between older and younger age are slightly equal. Take a look at the following plot to prove what I said.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(age = case_when(between(round(age), 0, 8) ~ "1. 0-8",
+                           between(round(age), 9, 20) ~ "2. 9-20",
+                           between(round(age), 21, 40) ~ "3. 21-40",
+                           between(round(age), 41, 60) ~ "4. 41-60",
+                           TRUE ~ "5. >60"), survived = as.factor(survived)) %>% 
+    count(age, survived, sex) %>% 
+    group_by(age, sex) %>% 
+    mutate(surv_rate = n/sum(n)) %>% 
+    ggplot() + 
+    geom_line(aes(x = age, y = surv_rate, col = survived, group = survived)) + 
+    geom_point(aes(x = age, y = surv_rate, col = survived, size = n)) + 
+    facet_wrap(sex ~ .)
+```
+
+In th plot, color indicates the survival condition, while the size of point determine the number of people. The plot supports my previous statement when the survival condition is very different between the older and younger age. Considering this, I think I will set the bracker category for the age.
+
+#### 7. Sib_sp Variable
+
+Sibsp variable is talking about how many siblings and or spouse brought into the ship.
+
+```{r}
+titanic_raw_all %>%
+    filter(!is.na(survived)) %>% 
+    mutate(survived = as.factor(survived)) %>% 
+    ggplot(aes(x = sib_sp)) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    scale_x_continuous(breaks = 0:8)
+```
+
+It seems that your probability of survive will greatly increase if you have only 1 siblings. The probability seems to drop either you don't have siblings or spouse or you have more siblings or spouse. Now, the question is just like previously, is this condition apply to all gender?
+
+```{r}
+titanic_raw_all %>%
+    filter(!is.na(survived)) %>% 
+    mutate(survived = as.factor(survived)) %>% 
+    ggplot(aes(x = sib_sp)) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    scale_x_continuous(breaks = 0:8) +
+    facet_wrap(. ~ sex, scales = "free_x")
+```
+
+I think different condition happens when the data was splited into gender. For the women, their survival rate will only get dropped when they have more than 2 siblings or spouse. While for men, they will only have slight higher survival probability when they have 1 sibling or spouse.
+
+#### 8. Parch Variable
+
+Parch variable talks about parents and children onboarded in the ship. In fact, if you are 5 years old, you might get benefit if you get onboarded with your parents since they will save you first. But in fact, if you are a grown man, you are the one who should save your parents. Considering this scheme, I think it is worth to check how this variable is related to the survival rate.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(survived = as.factor(survived)) %>%
+    ggplot(aes(x = parch)) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    scale_x_continuous(breaks = 0:8)
+```
+
+Having parents and or children could mean having more responsibility for their life. But the responsibility is not that simple. A women might be the priority for his parents to be saved first. For a men, it is a honor for him to sacrifice his life. As a parents it will be a happiness to see their 10 years old boy alive in the future, and so on. So having parents and or children might need another variable to describe their effect to the target variable. One of the variable to help explaining them is gender.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    mutate(survived = as.factor(survived)) %>%
+    ggplot(aes(x = parch)) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    scale_x_continuous(breaks = 0:8) +
+    facet_wrap(. ~ sex, scales = "free_x")
+```
+
+As the plot suggests, for a man, the more you have parents/children the less probability you will survive. It seems unlikely for a women, the more you have children/parents the higher probability you will survive.
+
+In fact, I think this variable can not be identify alone since we have another equal variable, the sibling or spouse. I just wonder, how the effect of the big family when they are included into one single variable.
+
+```{r}
+titanic_raw_all %>% 
+    mutate(family_num = parch + sib_sp,
+           survived = as.factor(survived)) %>%
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = family_num)) +
+    geom_bar(aes(fill = survived)) +
+    scale_x_continuous(breaks = 0:10) +
+    facet_wrap(. ~ sex, scales = "free_x")
+```
+
+Consider this plot, what I see is that for each family number category, the survival rate is different across the category. But for people with greater than 2 family number, there are a very small values to explain the variance in the data. Hence, I think, I will cap the values into 3 max. So if someone has more than 3 family, they will be considered as having 3 family number.
+
+```{r}
+titanic_raw_all %>% 
+    mutate(family_num = if_else((parch + sib_sp) >= 3, 3L,(parch + sib_sp)),
+           survived = as.factor(survived)) %>%
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = family_num)) +
+    geom_bar(aes(fill = survived), position = "fill") +
+    scale_x_continuous(breaks = 0:10) +
+    facet_wrap(. ~ sex, scales = "free_x")
+```
+
+Now I think, the data is more representative to tell the story behind the survival rate.
+
+#### 9. Ticket Variable
+
+The ticket variable contains a random variable that most likely has nothing to do with the survival rate. Hence, I think I just need to drop it.
+
+#### 10. Fare Variable
+
+Fare variable talks about the fare that the passenger should pay to get onboarded into the ship.
+
+```{r}
+titanic_raw_all %>%
+    ggplot(aes(x = fare)) +
+    geom_histogram()
+```
+
+The histogram of the fare said that most of the fare is less than 100. The data has outlier for the fare about 500.
+
+```{r}
+titanic_raw_all %>% 
+    filter(fare > 500, !is.na(survived))
+```
+
+Here I can see that people who paid for the fare greater than 500 is 100% survive. Considering the number of the data, this is might due to coincidence. To tell the data better, I think, I will separate the data into two categories, the first one is greater than or equal to 50 and less than 50.
+
+```{r}
+titanic_raw_all %>%
+    filter(!is.na(survived)) %>% 
+    mutate(fare_category = case_when(fare < 50 ~ "< 50", TRUE ~ ">= 50")) %>% 
+    ggplot(aes(x = fare_category, fill = as.factor(survived))) +
+    geom_bar(position = "fill") +
+    facet_wrap(. ~ sex)
+```
+
+I think for both situation, either for men or women, the higher fare has higher survival rate. This means that the fare has affect to the survival rate even across gender.
+
+#### 11. Cabin
+
+The cabin variable mostly talk about the cabin name/code where the passengers placed. But somehow, there are so many NAs in this data.
+
+```{r}
+titanic_raw_all %>% 
+    mutate(cabin = case_when(cabin == "" ~ NA, TRUE ~ "has cabin")) %>% 
+    count(cabin)
+```
+
+There is about 1014 or 77% the data is missing. This is of course hard to interpret or guess the missing values. Hence, I think I will drop the variable.
+
+#### 12. Embarked
+
+Embarked variable is a variable that talks about the port where the passengers are embarked from.
+
+```{r}
+titanic_raw_all %>% 
+    ggplot(aes(x = forcats::fct_infreq(embarked))) +
+    geom_bar() +
+    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 0)
+```
+
+From the whole data set, I found out that 2 out of them are missing. Now, the main question left behind is, how embarked variable explains the survival rate.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = forcats::fct_infreq(embarked))) +
+    geom_bar(aes(fill = as.factor(survived)), position = "fill")
+```
+
+The plot clearly indicates that there is slightly different results for different embarked. In order to have better inference, I think I will zoom the data in to gender.
+
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = forcats::fct_infreq(embarked))) +
+    geom_bar(aes(fill = as.factor(survived)), position = "fill") +
+    facet_wrap(sex ~ .)
+```
+
+I think, for each embarked category, the gender plays a huge effect here. For example, for men embarked from Q port has lower survival rate compare to men embarked from S port. Meanwhile for women, women who embarked from Q port has higher chance to survive than the women comes from S port.
+
+Considering this, I think this variable can be used to add prediction power for the survival list.
+
+**Conclusion**
+==========
+
+After doing some data exploration, there are some conclusions that I can draw.
+
+1. Some variables are not properly stored. For example, the survived and pclass variables should be stored in factor instead of integer. The sex, name and embarked variables also should be stored in factor instead of character or string.
+
+2. Some variables seem not have any effect to the survival rate and better to be dropped. For example, the passenger_id and ticket. These variables are just random variable assigned to identify the ticket and the passenger uniquely.
+
+3. Some features should be extracted to get another useful features. For example, the name variable contains Socio Economic Status (SES) that is proven able to explain the survival condition.
+
+4. Some variables might need to be merged with another variables to bring better explanation. For example, the variable parch and sib_sp gives me better explanation about the survival condition when joined than the separated one.
+
+5. Due to low data points, some data might need to capped or lumped. For example, the SES categories extracted from name variable, might need to be simplified. Another example is number of parents, children, sibling and spouse might need to be capped.
+
+6. There are found some missing data to deal with. Variable such as embarked, age, and fare.
+
+### Data Splitting
+
+For this titanic use case, I will split the data into 3 types of data. The first one is validation test which is the `test` set coming from the competition where the result will be submitted. The `train` set data from the competition will be separated into `train` set and `test` set.
+
+```{r echo=TRUE}
+validation_set <- titanic_test_set
+
+i_train <- initial_split(titanic_training_set, prop = 3/4)
+
+train_set <- training(i_train)
+    
+test_set <- testing(i_train)
+```
+
+## DATA MODELING
+
+### Data Preprocessing
+
+In this preprocessing data, I will use 4C frameworks (correcting, completing, creating, converting) and tidy principal.
+
+#### Correcting
+
+I didn't find any field that seems need to be corrected in the data. So I will skip this step.
+
+#### Completing
+
+```{r}
+titanic_raw_all %>% 
+    select(-c(source,survived)) %>% 
+    DataExplorer::plot_missing(missing_only = TRUE, theme_config = used_theme)
+```
+
+Previously, there were 3 variables have missing values. But now, the plot stated that there is only 2 variables. The reason behind this is that the missing values on embarked variable is not missing values, instead it is an empty string (""). Hence, I will convert it first to missing values in order to ensure that it is acknowledged as missing values.
+
+```{r}
+titanic_raw_all %>% 
+    select(-c(source,survived)) %>% 
+    mutate(embarked = if_else(embarked == "", NA, embarked)) %>% 
+    DataExplorer::plot_missing(missing_only = TRUE, theme_config = used_theme)
+```
+
