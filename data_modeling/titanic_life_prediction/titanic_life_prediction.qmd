@@ -1,11 +1,11 @@
 ---
 title: "Titanic Life Prediction"
+author: "Suberlin Sinaga"
+header: |
+  \usepackage[familydefault,regular]{Chivo} %% Option 'familydefault'
 format:
   pdf:
     highlight-style: dracula
-    code-block-bg: true
-    code-block-border-left: "#c3402a"
-    fontfamily: SourceSansPro-Regular
 mainfont: "SourceSansPro-Regular"
 editor_options: 
   chunk_output_type: console
@@ -440,7 +440,7 @@ titanic_raw_all %>%
     facet_wrap(sex ~ .)
 ```
 
-I think, for each embarked category, the gender plays a huge effect here. For example, for men embarked from Q port has lower survival rate compare to men embarked from S port. Meanwhile for women, women who embarked from Q port has higher chance to survive than the women comes from S port.
+I think, for each embarked category, the gender plays a little effect here. It only affects people embarked from Q port. The men embarked from Q port has is the lowest survival rate for men, while it doesn't apply for women.
 
 Considering this, I think this variable can be used to add prediction power for the survival list.
 
@@ -532,8 +532,9 @@ my_recipe %<>%
 The new variable I want to create is family number by adding parent, children, sibling, and spouse all together.
 
 ```{r}
+#| echo: true
 my_recipe %<>% 
-    step_mutate(family_num = parch + sib_sp)
+    step_mutate(family_num = parch + sib_sp, role = "predictor")
 ```
 
 #### Converting
@@ -542,5 +543,52 @@ Converting is meant to convert the data type into what it should be. Previously,
 
 ```{r}
 #| echo: true
+my_recipe %<>% 
+  step_num2factor(pclass, levels = c("1","2","3"), ordered = TRUE) %<>% 
+  step_mutate(survived = factor(survived, levels = c("0", "1")), skip = TRUE)
 ```
 
+### Feature Engineering
+
+#### Feature Extraction
+
+The feature extraction is used when there is a useful feature in another feature regardless the feature is important or not.
+
+```{r}
+my_recipe %<>% 
+  step_mutate(ses_name = case_when(name_decoder(name) %in% c("Mr", "Miss", "Mrs", "Master") ~ name_decoder(name), TRUE ~ "Other") %>% factor(levels = c("Mr", "Miss", "Mrs", "Master", "Other")), role = "predictor")
+```
+
+#### Feature Selection
+
+In machine learning model, there is a Jargon known as **"garbage in, garbage out"**. It means, if we feed our model with garbage (irrelevant and un-useful features) then we will get another garbage as the output. Hence, feature selection is very important.
+
+Based on my previous exploration, each variables have different affect on the target variable.
+
+* **Sex variable** is the most important variable to predict the survival rate. In simple, by saying that the men are all die and the women are all survive we will have ~75% accuracy of the model.
+
+* **Name variable** is not directly related to the survival rate. But it contains Socio Economic Status and gender related that can explain the survival rate even further. For example, even if you are a man but you are a `Master` then you will have greater than 50% survival rate compare to the common men. While for women, you will have a bit lower survival rate if you are a `Miss`. This indicates that the SES in a name can epxlain the variability even further.
+
+* **Pclass variable** is another SES variable. Regardless the gender, you will have higher survival rate if you have higher class.
+
+* **Age variable** describes how old the passenger is. In terms of survival rate, it seems that your survival rate will greatly dropped if you are a men with age between 18 and 56. It seems that age has not much effect to women.
+
+* **Sib_sp variable** talks about sibling and spouse get onboarded into the ship. In general, it was stated that the more family you have, the less your survival rate will be.
+
+* **Parch variable** explains about parent and children you brought into the ship. It is found that if you have more parents and or children up until 3, your survival rate will be higher, but it will be dropped otherwise.
+
+* **Family_num variable** was created by adding the number of sibling/spouse and parent/children you brought into the ship. It seems that the effect is different across gender. For women, the more you bring your family, the less your survival rate will be, otherwise for men.
+
+* **Fare variable** talks about the value of the ticket paid by the passengers. The higher the price paid, the higher the probability to survive.
+
+* **Embarked variable** explains about from where the passengers were departed from. Across the gender, the C port has the highest probability to survive.
+
+From above explanations, I think all those variables can explain the variability of the data. Hence I think I can use them to train the model.
+
+#### Feature Transformation
+
+In this case, I think there is no variable that needs to be transformed. So i will skip this process.
+
+### Model Training
+
+Previously, I have built the data understanding for each variables. Now, the question is 
