@@ -52,9 +52,7 @@ Data modeling is the final part of the machine learning flow. It consists of the
     
     * Feature transformation : For some algorithms, feature transformation is very crucial and might be very needed. For example, the algorithm that uses gradient descent to optimize the cost function, it will be faster to converge when the numerical values are transformed into unitless data and has some scales.
  
-* Model Training. Training some models using the data 
-
-* Model Evaluation
+* Model Training & Evaluation
     
 * Model Selection. Have a good data is one thing. Another important thing is have a good and suitable machine learning to work with. Choosing a model can be a very tricky since it can lead to overfitting and underfitting condition that might have no end.
 
