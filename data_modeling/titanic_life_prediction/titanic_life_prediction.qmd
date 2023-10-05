@@ -19,6 +19,8 @@ suppressPackageStartupMessages({
     library(dplyr)
     library(tidymodels)
     library(tidyquant)
+    library(C50)
+    library(rules)
 })
 
 # Theming section
@@ -490,7 +492,8 @@ In this preprocessing data, I will use 4C frameworks (correcting, completing, cr
 ```{r}
 my_recipe <- recipe(train_set) %>% 
     update_role(survived, new_role = "outcome") %>% 
-    update_role(sex, age, fare, embarked, pclass, sib_sp, parch, new_role = "predictor")
+    update_role(sex, age, fare, embarked, pclass, sib_sp, parch, new_role = "predictor") %>% 
+    step_string2factor(all_nominal_predictors())
 ```
 
 
@@ -524,6 +527,7 @@ my_recipe %<>%
     step_mutate(embarked = if_else(embarked == "", NA, embarked)) %<>% 
     step_impute_mean(age) %<>% 
     step_impute_mode(embarked) %<>% 
+    step_mutate(embarked = droplevels(embarked)) %<>% 
     step_impute_median(fare)
 ```
 
@@ -585,10 +589,279 @@ Based on my previous exploration, each variables have different affect on the ta
 
 From above explanations, I think all those variables can explain the variability of the data. Hence I think I can use them to train the model.
 
+Feature Importance
+====
+
+Feature importance is one of feature selection method that using a model to asses how important a feature to the model. Assuming all the variables above were getting used. I will measure how important each variable to predict the target variable. I will use simple logistic regression to build the measurement.
+
+There are several types of variable importance measurement that can be done in R, they are permutation based, variance based and shapley based. While for the metrics, we can use accuracy, f1 score, roc_auc, and so on.
+
+```{r}
+predict_kern <- function(object, newdata = train) {kernlab::predict(object, newdata) %>% mutate_all(as.numeric) %>% .[[".pred_class"]]}
+predict_kern_frame <- function(object, newdata = train) {kernlab::predict(object, newdata) %>% mutate_all(as.numeric) }
+my_recipe %<>% 
+  step_rm(name, ticket, passenger_id, cabin)
+logit_engine <- logistic_reg(penalty = "roc_auc")
+
+logit_wf <- workflow() %>% 
+  add_model(logit_eng) %>% 
+  add_recipe(my_recipe)
+
+logit_mdl <- logit_wf %>% 
+  fit(data = train_set)
+
+logit_mdl %>% 
+    extract_fit_parsnip() %>% 
+    vi(
+        method = "firm",
+        train = juice(my_recipe %>% prep()) %>% mutate(survived = survived),
+        target = "survived",
+        metric = "roc_auc",
+        pred_wrapper = predict_kern,
+        event_level = "first",
+        feature_names = c("sex","embarked","pclass","sib_sp","parch","ses_name","age","family_num","fare")
+    ) %>% 
+  ggplot(aes(x = reorder(Variable, desc(Importance)), y = Importance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  # ggtitle(bquote(FeatureImportance^2))
+  labs(title = expression(paste("Feature Importance using ", FIRM^1," Method")))
+
+logit_mdl %>% 
+    extract_fit_parsnip() %>% 
+    vi(
+        method = "permute",
+        train = juice(my_recipe %>% prep()) %>% mutate(survived = survived),
+        target = "survived",
+        metric = "roc_auc",
+        pred_wrapper = predict_kern,
+        # pred_wrapper = kernlab::pred,
+        # event_level = "first",
+        feature_names = c("sex","embarked","pclass","sib_sp","parch","ses_name","age","family_num","fare")
+    ) %>% 
+  ggplot(aes(x = reorder(Variable, desc(Importance)), y = Importance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = expression(paste("Feature Importance using ", PERMUTE^2," Method")))
+```
+
+As expected, the sex and ses_name variables are the most important variables on both measurement. Another thing for sure, `family_num` have no importance for both measurements. This is expected. Since family_num is the total of `sib_sp` and `parch` is the addition between the two, then they will naturally be colinear to each other.
+
 #### Feature Transformation
 
 In this case, I think there is no variable that needs to be transformed. So i will skip this process.
 
-### Model Training
+### Model Training & Evaluation
 
-Previously, I have built the data understanding for each variables. Now, the question is 
+Previously, I have built the data understanding for each variables. Now, I will model the data to predict the survival rate. There are currently 9 variables that I will use as features. The question is, what kind of algorithm that should be used to train the data. There are several types of classification algorithm.
+
+* Logistic regression
+
+* Decision Tree
+
+* Random Forest
+
+* XGB
+
+* GBM
+
+* SVM
+
+Among the 5, logistic regression is the simplest. I will try to train all the models and see which one is the best to fit the data out.
+
+#### Logistic Regression
+
+The code:
+
+```{r}
+#| echo: true
+logit_eng <- logistic_reg(penalty = "ROC")
+
+logit_wf <- workflow() %>% 
+  add_model(logit_eng) %>% 
+  add_recipe(my_recipe %>% step_rm(family_num))
+
+logit_mdl <- logit_wf %>% 
+  fit(data = train_set)
+
+logit_res <- data.frame(truth = as.factor(test_set$survived), estimate = predict(logit_mdl, test_set)$.pred_class, prob = predict(logit_mdl, test_set, type = "prob")$.pred_0)
+conf_mat(logit_res, truth = truth, estimate = estimate)
+accuracy(logit_res, truth, estimate)
+f_meas(logit_res, truth, estimate)
+roc_curve(logit_res, truth, prob) %>% autoplot()
+ roc_auc(logit_res, truth, prob, event_level = "first")
+```
+
+```{r test_submission}
+pred_res <- data.frame(
+  PassengerId = validation_set$passenger_id,
+  Survived = predict(logit_mdl, validation_set)$.pred_class)
+# we get 0.77511 on the validation set
+write.csv(pred_res, here::here("logit_titanic_basic.csv"), row.names = FALSE)
+```
+
+#### Decision Tree
+
+```{r}
+#| echo: true
+d_tree <- C5_rules()
+
+d_tree_wf <- workflow() %>% 
+  add_model(d_tree) %>% 
+  add_recipe(my_recipe)
+
+d_tree_mdl <- d_tree_wf %>% 
+  fit(data = train_set)
+
+d_tree_res <- data.frame(truth = as.factor(test_set$survived),
+                        estimate =predict(d_tree_mdl, test_set)$.pred_class, prob = predict(d_tree_mdl, test_set, type = "prob")$.pred_0)
+conf_mat(d_tree_res, truth = truth, estimate = estimate)
+accuracy(d_tree_res, truth, estimate)
+f_meas(d_tree_res, truth, estimate)
+roc_curve(d_tree_res, truth, prob) %>% autoplot()
+roc_auc(d_tree_res, truth, prob, event_level = "first")
+```
+
+
+```{r}
+pred_res <- data.frame(
+  PassengerId = validation_set$passenger_id,
+  Survived = predict(d_tree_mdl, validation_set)$.pred_class)
+# we get 0.75837 on the validation set
+write.csv(pred_res, here::here("logit_dtree_basic.csv"), row.names = FALSE)
+```
+
+#### Random Forest
+
+```{r}
+#| echo: true
+r_forest <- rand_forest(mode = "classification")
+
+r_forest_wf <- workflow() %>% 
+  add_model(r_forest) %>% 
+  add_recipe(my_recipe)
+
+r_forest_mdl <- r_forest_wf %>% 
+  fit(data = train_set)
+
+r_forest_res <- data.frame(truth = as.factor(test_set$survived),
+                        estimate =predict(r_forest_mdl, test_set)$.pred_class, prob = predict(r_forest_mdl, test_set, type = "prob")$.pred_0)
+conf_mat(r_forest_res, truth = truth, estimate = estimate)
+accuracy(r_forest_res, truth, estimate)
+f_meas(r_forest_res, truth, estimate)
+roc_curve(r_forest_res, truth, prob) %>% autoplot()
+roc_auc(r_forest_res, truth, prob, event_level = "first")
+```
+
+
+```{r}
+r_forest_pred_res <- data.frame(
+  PassengerId = validation_set$passenger_id,
+  Survived = predict(r_forest_mdl, validation_set)$.pred_class)
+# we get 0.76076 on the validation set
+write.csv(r_forest_pred_res, here::here("r_forest_ranger_basic.csv"), row.names = FALSE)
+```
+
+#### XGB
+
+```{r}
+my_recipe_xgb <- my_recipe %>% 
+    step_dummy(all_nominal_predictors())
+#| echo: true
+xgb <- boost_tree(mode = "classification", engine = "xgboost")
+
+xgb_wf <- workflow() %>% 
+  add_model(xgb) %>% 
+  add_recipe(my_recipe_xgb)
+
+xgb_mdl <- xgb_wf %>% 
+  fit(data = train_set)
+
+xgb_res <- data.frame(truth = as.factor(test_set$survived),
+                        estimate =predict(xgb_mdl, test_set)$.pred_class, prob = predict(xgb_mdl, test_set, type = "prob")$.pred_0)
+conf_mat(xgb_res, truth = truth, estimate = estimate)
+accuracy(xgb_res, truth, estimate)
+f_meas(xgb_res, truth, estimate)
+roc_curve(xgb_res, truth, prob) %>% autoplot()
+roc_auc(xgb_res, truth, prob, event_level = "first")
+```
+
+
+```{r}
+xgb_pred_res <- data.frame(
+  PassengerId = validation_set$passenger_id,
+  Survived = predict(xgb_mdl, validation_set)$.pred_class)
+# we get 0.74162 on the validation set
+write.csv(xgb_pred_res, here::here("xgb_basic.csv"), row.names = FALSE)
+```
+
+#### GBM
+
+```{r}
+my_recipe_xgb <- my_recipe %>% 
+    step_dummy(all_nominal_predictors())
+#| echo: true
+gbm <- boost_tree(mode = "classification", engine = "lightgbm")
+
+gbm_wf <- workflow() %>% 
+  add_model(gbm) %>% 
+  add_recipe(my_recipe)
+
+gbm_mdl <- gbm_wf %>% 
+  fit(data = train_set)
+
+gbm_res <- data.frame(truth = as.factor(test_set$survived),
+                        estimate =predict(gbm_mdl, test_set)$.pred_class, prob = predict(gbm_mdl, test_set, type = "prob")$.pred_0)
+conf_mat(gbm_res, truth = truth, estimate = estimate)
+accuracy(gbm_res, truth, estimate)
+f_meas(gbm_res, truth, estimate)
+roc_curve(gbm_res, truth, prob) %>% autoplot()
+roc_auc(gbm_res, truth, prob, event_level = "first")
+```
+
+
+```{r}
+gbm_pred_res <- data.frame(
+  PassengerId = validation_set$passenger_id,
+  Survived = predict(gbm_mdl, validation_set)$.pred_class)
+# we get 0.74162 on the validation set
+write.csv(gbm_pred_res, here::here("gbm_basic.csv"), row.names = FALSE)
+```
+
+#### SVM
+
+```{r}
+my_recipe_xgb <- my_recipe %>% 
+    step_dummy(all_nominal_predictors())
+#| echo: true
+svm <- svm_linear(mode = "classification", engine = "kernlab")
+
+svm_wf <- workflow() %>% 
+  add_model(svm) %>% 
+  add_recipe(my_recipe %>% step_rm(parch))
+
+svm_mdl <- svm_wf %>% 
+  fit(data = train_set)
+
+svm_res <- data.frame(truth = as.factor(test_set$survived),
+                        estimate =predict(svm_mdl, test_set)$.pred_class, prob = predict(gbm_mdl, test_set, type = "prob")$.pred_0)
+paste("Confussion matrix SVM\n")
+conf_mat(svm_res, truth = truth, estimate = estimate)
+accuracy(svm_res, truth, estimate)
+f_meas(svm_res, truth, estimate)
+roc_curve(svm_res, truth, prob) %>% autoplot()
+roc_auc(svm_res, truth, prob, event_level = "first")
+```
+
+
+```{r}
+svm_pred_res <- data.frame(
+  PassengerId = validation_set$passenger_id,
+  Survived = predict(svm_mdl, validation_set)$.pred_class)
+# we get 0.77511 on the validation set
+write.csv(svm_pred_res, here::here("svm_basic.csv"), row.names = FALSE)
+```
+
+### Model Evaluation
+
+Based on the model I have trained previously, it seems 
