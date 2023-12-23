@@ -10,7 +10,7 @@ Data analysis in this part is limited to descriptive, diagnostic or prescriptive
 
 -   **Data Collection**. Data collection is a process to collect the data, either it is through API or direct downloading the data from the source.
 
--   **Data Description**. A short description about the field of the data. This will give short but powerful understanding about the data field.
+-   **Data Cleaning**. Cleaning up the data to make the data is ready to be analyzed. Some actions such as handling missing values, handling outliers, and checking data format are needed.
 
 -   **Data Exploration**. The technique to generate data exploration in this section is by answering some business question, and then display the data to answer them. The question asked should support the main problem statement.
 
@@ -36,19 +36,15 @@ Data collection is the first step in data modeling world. The source of data to 
 
 ### 3. Data understanding
 
-In this part, the data will get summarized on a top level to understand about what is the data about, how many features they have, what each feature is talking about, etc.
+In this part, the data will get summarized on a top level to understand about what is the data about, how many features they have, what each feature is talking about, etc. The following activities can be done to understand the data.
 
-### 4. Data Cleaning
+-   Checking the summary of the data regarding their columns, rows and total observations
 
-Data cleaning comes after collecting. The raw data we collected may contain various data problem, such as missing values, some error that causing outlier to appear, wrongly assigned data types where some factor assigned as numeric, some numeric assigned as character, etc. The process in this basic data cleaning is as follow:
+-   Checking missing values to be explored further using EDA to define the strategy to deal with them.
 
--   Handling missing values. The missing values can be either imputed or deleted
+-   Checking the validity of the data type and name standard to make the data to be ready to be analyzed.
 
--   Handling outlier. Outlier come for a reason. It can be triggered by some errors or mistakes, it can be there due to some anomaly, or it is just effect of seasonality that causes the data to be outlier.
-
--   Data conversion. Some data are assigned as string or character. Meanwhile, most of the machine learning model not accepting this type of data. Hence those data needs to be converted into something else.
-
-### 5. Exploratory Data Analysis (EDA)
+### 4. Exploratory Data Analysis (EDA)
 
 Exploratory data analysis or also known as EDA is a step to explore the data even deeper and further to find some pattern in the data. I usually divide the process into three part.
 
@@ -58,7 +54,7 @@ Exploratory data analysis or also known as EDA is a step to explore the data eve
 
 -   Multivariate analysis. Sometimes, we know that some independent variables have an effect towards the dependent variable. In order to make sure their relationship, we can use multivariate analysis to explain that.
 
-### 6. Data Preprocessing
+### 5. Data Preprocessing
 
 Data preprocessing is a step that we have to do after exploring the data and find some insights regarding the data condition. Here, more advance and complex calculation might be done to preprocess the data. The following things might be done in the data preprocessing part.
 
@@ -69,6 +65,14 @@ Data preprocessing is a step that we have to do after exploring the data and fin
     -   Data testing
 
     -   Data validation
+
+-   Data cleaning. In this section, we will deal with the following:
+
+    -   Handling missing values. To filling the missing values, we have to ensure that we will only use data from training set to avoid data leakage.
+
+    -   Handling outliers
+
+    -   Data conversion (if any needed).
 
 -   Feature creation
 
@@ -88,7 +92,7 @@ Data preprocessing is a step that we have to do after exploring the data and fin
 
     -   Feature selection
 
-### 7. Data Modeling
+### 6. Data Modeling
 
 Data modeling is the final part of the machine learning flow. It consists of the following steps:
 
