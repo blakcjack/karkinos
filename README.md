@@ -84,4 +84,16 @@ Data preprocessing is a step that we have to do after exploring the data and fin
 
     -   Feature selection
 
-### 
+### 6. Data Modeling
+
+Data modeling is the final part of the machine learning flow. It consists of the following steps:
+
+-   Model training. The first step in data modeling is training the data to fit the model that we have. There are so many machine learning model that might not work best for every situation but some of them might work best on our problem. Hence, fitting or training many model will help us finding the best one.
+
+-   Model evaluation phase I.
+
+-   Model selection
+
+-   Model tuning
+
+-   Model deployment.
