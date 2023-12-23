@@ -53,3 +53,35 @@ Exploratory data analysis or also known as EDA is a step to explore the data eve
 -   Bivariate analysis. In this type of analysis, each independent variable will be compared against the target (dependent variable).
 
 -    Multivariate analysis. Sometimes, we know that some independent variables have an effect towards the dependent variable. In order to make sure their relationship, we can use multivariate analysis to explain that.
+
+### 5. Data Preprocessing
+
+Data preprocessing is a step that we have to do after exploring the data and find some insights regarding the data condition. Here, more advance and complex calculation might be done to preprocess the data. The following things might be done in the data preprocessing part.
+
+-   Data splitting. In this part, the data will be divided into three (3) parts.
+
+    -   Data training
+
+    -   Data testing
+
+    -   Data validation
+
+-   Feature creation
+
+-   Feature engineering
+
+    -   Feature extraction
+
+    -   Feature transformation
+
+        -   Feature scaling
+
+        -   Feature normalization
+
+        -   Dummify
+
+        -   Label encoding
+
+    -   Feature selection
+
+### 
