@@ -20,7 +20,11 @@ Data analysis in this part is limited to descriptive, diagnostic or prescriptive
 
 For modeling standard, the following flow will be applied
 
-### 1. Data Collection
+### 1. Problem Statement
+
+When try to build a machine learning model, it is important to know the goal of the model and what kind of the problem that we want to answer/solve.
+
+### 2. Data Collection
 
 Data collection is the first step in data modeling world. The source of data to be collected can be as follow:
 
@@ -30,11 +34,11 @@ Data collection is the first step in data modeling world. The source of data to 
 
 -   Pooling data from publication/printed material
 
-### 2. Data understanding
+### 3. Data understanding
 
 In this part, the data will get summarized on a top level to understand about what is the data about, how many features they have, what each feature is talking about, etc.
 
-### 3. Data Cleaning
+### 4. Data Cleaning
 
 Data cleaning comes after collecting. The raw data we collected may contain various data problem, such as missing values, some error that causing outlier to appear, wrongly assigned data types where some factor assigned as numeric, some numeric assigned as character, etc. The process in this basic data cleaning is as follow:
 
@@ -44,17 +48,17 @@ Data cleaning comes after collecting. The raw data we collected may contain vari
 
 -   Data conversion. Some data are assigned as string or character. Meanwhile, most of the machine learning model not accepting this type of data. Hence those data needs to be converted into something else.
 
-### 4. Exploratory Data Analysis (EDA)
+### 5. Exploratory Data Analysis (EDA)
 
 Exploratory data analysis or also known as EDA is a step to explore the data even deeper and further to find some pattern in the data. I usually divide the process into three part.
 
--    Univariate analysis. In this type of analysis, every single data is explored and get deeper understanding. In this part, we can check the distribution of the data, check if the outlier needs to be normalized or accept the values as it is, and so on.
+-   Univariate analysis. In this type of analysis, every single data is explored and get deeper understanding. In this part, we can check the distribution of the data, check if the outlier needs to be normalized or accept the values as it is, and so on.
 
 -   Bivariate analysis. In this type of analysis, each independent variable will be compared against the target (dependent variable).
 
--    Multivariate analysis. Sometimes, we know that some independent variables have an effect towards the dependent variable. In order to make sure their relationship, we can use multivariate analysis to explain that.
+-   Multivariate analysis. Sometimes, we know that some independent variables have an effect towards the dependent variable. In order to make sure their relationship, we can use multivariate analysis to explain that.
 
-### 5. Data Preprocessing
+### 6. Data Preprocessing
 
 Data preprocessing is a step that we have to do after exploring the data and find some insights regarding the data condition. Here, more advance and complex calculation might be done to preprocess the data. The following things might be done in the data preprocessing part.
 
@@ -84,7 +88,7 @@ Data preprocessing is a step that we have to do after exploring the data and fin
 
     -   Feature selection
 
-### 6. Data Modeling
+### 7. Data Modeling
 
 Data modeling is the final part of the machine learning flow. It consists of the following steps:
 
