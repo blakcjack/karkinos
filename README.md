@@ -94,10 +94,7 @@ Data modeling is the final part of the machine learning flow. It consists of the
 
 -   Model evaluation phase 1.
 
-```{=html}
-<!-- -->
-```
--   Model Selection. Have a good data is one thing. Another important thing is have a good and suitable machine learning to work with. Choosing a model can be a very tricky since it can lead to overfitting and underfitting condition that might have no end.
+-   Model Selection. Have a good data is one thing. Another important thing is have a good and suitable machine learning model to work with. Choosing a model can be a very tricky since it can lead to overfitting or underfitting condition that might have no end.
 
 -   Model tuning.
 
