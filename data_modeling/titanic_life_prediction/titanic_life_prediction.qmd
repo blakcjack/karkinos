@@ -33,7 +33,8 @@ filters:
 \definecolor{danger}{RGB}{255,45,74}
 ```
 ```{r setup_chunk, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.height = 2.5)
 
 # importing library
 suppressPackageStartupMessages({
@@ -48,7 +49,7 @@ suppressPackageStartupMessages({
 })
 
 # Theming section
-used_theme <- theme_tq(base_size = 12) +
+used_theme <- theme_tq(base_size = 10) +
     theme(plot.background = element_rect(fill = "#C7E5C2"),
           panel.background = element_rect(fill = "#bddbb8"),
           strip.background = element_rect(fill = "#1A1A1A"),
@@ -65,7 +66,7 @@ used_theme <- theme_tq(base_size = 12) +
           panel.grid.minor = element_blank(),
           panel.grid.major.x = element_blank(),
           panel.grid.major.y = element_line(colour = "#96b392", linewidth = 0.01),
-          plot.subtitle = element_text(size = 10)
+          plot.subtitle = element_text(size = 9)
     )
 
 theme_set(used_theme)
@@ -110,7 +111,17 @@ Naturally, the testing set has no target variable, hence I set the target variab
 titanic_raw_all %>% str()
 ```
 
-As shown, the dataset has 12 variables (exclude the Source variable). Between the 12 variables, 1 of them is dependent variable while the rest are independent.
+As shown, the dataset has 12 variables (exclude the Source variable). Between the 12 variables, 1 of them is dependent variable while the rest are independent. I also find out the variable like pclass, sex, survived cabin, and embarked are stored in a wrong data type. I think they will be better stored as factor instead of character in R. Lastly, I think, age will be better to be stored as integer with ceiling (0.1 will be counted as 1).
+
+```{r}
+titanic_raw_all %<>% 
+    mutate_at(vars(Sex, Cabin, Embarked, Survived), as.factor) %<>%
+    mutate(Pclass = factor(Pclass, levels = c("1", "2", "3"))) %>% 
+    mutate(Age = as.integer(ceiling(Age)))
+```
+
+
+I think, there are some wrong assignment here on the data. For example, the passenger_id is stored as integer, it should be better to store them as character like ticket.
 
 Another thing that I find out is that the variables name started by capital letter here. Just for the standardization, I will use snake_case format for the variable name.
 
@@ -121,315 +132,68 @@ titanic_raw_all %<>% janitor::clean_names()
 Now, I will start to see overall summary of the data.
 
 ```{r}
-a <- titanic_raw_all %>% DataExplorer::introduce()
-with(a, {
-    print(paste("Total Rows :", rows))
-    print(paste("Total Columns :", columns - 1))
-    print(paste("Total Observations :", (columns- 1) * rows))
-    print(paste("Total Discrete Columns :", discrete_columns - 1))
-    print(paste("Total Continuous Columns :", continuous_columns))
-    print(paste("Total Missing Values :", total_missing_values))
+split_data <- DataExplorer::split_columns(data.table::data.table(titanic_raw_all))
+output <- data.table::data.table(rows = nrow(titanic_raw_all), columns = ncol(titanic_raw_all), 
+        discrete_columns = split_data[["num_discrete"]], continuous_columns = split_data[["num_continuous"]], 
+        all_missing_columns = split_data[["num_all_missing"]], 
+        total_missing_values = sum(is.na(titanic_raw_all)), complete_rows = sum(complete.cases(titanic_raw_all))
+        )
+with(output, {
+    cat(paste("Total Rows :", rows, '\n'))
+    cat(paste("Total Columns :", columns - 1, '\n'))
+    cat(paste("Total Observations :", (columns- 1) * rows, '\n'))
+    cat(paste("Total Discrete Columns :", discrete_columns - 1, '\n'))
+    cat(paste("Total Continuous Columns :", continuous_columns, '\n'))
+    cat(paste("Total Missing Values :", total_missing_values, '\n'))
 })
 ```
 
-## [C. Data Cleaning]{color="title"}
-
-Before further using the data, I will first do some basic cleaning up. One of the basic clean up that I will apply is missing values handling.
-
-## DATA EXPLORATION
-
-### Data in Brief
+The next thing that I am curious of is about the missing values. Where did they come from.
 
 ```{r}
-titanic_raw_all %>% str()
+DataExplorer::plot_missing(titanic_raw_all %>% mutate(embarked = case_when(embarked == "" ~ NA, TRUE ~ embarked),
+                                                      cabin = case_when(cabin == "" ~ NA, TRUE ~ cabin)) %>% select(-survived), missing_only = TRUE, theme_config = used_theme, ggtheme = used_theme, geom_label_args = list(label.size = 0.1, label.padding = unit(0.1, "lines"),
+                                                                                                                                                                                                                             size= 3),
+                           title = "Missing Values on Titanic Data All")
 ```
 
-Here I have 13 variables, from PassengerId to Survived. The source variable is an addition to mark where the data comes from, so basically I have only 12 variables come from the data. First thing I notice here is that the name of the variable is not following `snake_case` format. Hence I will first standardized them.
+From the data, I see that cabin is the variable with highest number of the missing values, it is about ~77.46%. For now, this information is just as reference. I will deal with missing values later on data preprocessing.
 
-```{r clean_up_names, echo=TRUE}
-titanic_raw_all %<>% janitor::clean_names()
+## [C. Exploratory Data Analysis]{color="title"}
 
-titanic_raw_all %>% str()
-```
+### [Univariate  Data Analysis]{color="secondary"}
 
-Now the columns have been all standardized. Now the next question is that, what is the first variable to explore. Since I would like to explore them in a set line. I will first check the variable with highest correlation to the target first.
+In order to do univariate analysis, I will divide the data into two types, the discrete variable and continuous variable.
+
+#### [Discrete Variables]{color="info"}
 
 ```{r}
-titanic_raw_all[complete.cases(titanic_raw_all),] %>% 
-    select(-source, -cabin, -name, -ticket) %>% 
-    mutate(sex = case_when(sex == "male" ~ 1, TRUE ~ 0),
-           embarked = factor(embarked, levels = c("S", "Q", "C"))) %>%
-    DataExplorer::plot_correlation()
+#| fig-height: 4
+titanic_raw_all %>% 
+    select(where(is.character), where(is.factor)) %>%
+    select(-source) %>% 
+    DataExplorer::plot_bar(theme_config = used_theme,
+                           ggtheme = ggplot2::theme_set(used_theme),
+                           nrow = 2L,
+                           ncol = 2L)
 ```
 
-This correlation plot is a very early correlation plot In this plot:
+<em/>Due to category limitation to 50 as max, there are only 4 variables that can be plotted. From the plot, I can see that majority people are from class 3 (which is the cheapest class). People on-boarded are mostly men where the passengers mostly embarked from S port. The empty string on embarked plot is equal to missing values or unknown embarked location. The "NA" on survived variables indicates that the data comes from testing set with unknown survival condition (need to be predicted). From the known survival condition, we know that most of the passengers are death.
 
-1.  I encode sex to use 1 and 0, where 1 for male and 0 for female.
-
-2.  I remove column with too many unique values such as name, cabin, and ticket.
-
-3.  I also remove rows contains missing values.
-
-From the plot, I know that sex, pclass, fare, embarked, and age. Those 5 variables are highly correlated to the target and I will first investigate them.
-
-### 1. Survived Variable
-
-This variable is basically a binary variable where the value is either 0 or 1. It represents whether the passenger will survive from the disaster or not. Considering the data, it should be stored as factor but yet the data was stored in `integer` data type.
-
-```{r}
-titanic_training_set %>% 
-    mutate(Survived = as.factor(Survived)) %>% 
-    ggplot(aes(x = Survived, y = after_stat(count))) +
-    geom_bar(aes(fill = Survived), width = 0.5) +
-    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 1) +
-    scale_fill_manual(values = survived_color)
-```
-
-The graph shows that people who survive on the training data is 342 (38.4%) and the one that is not survived is 549 (61.6%). The ratio between them is 1 : 1.6 which can be consideered as balance dataset.
-
-### 2. Sex Variable
-
-Sex variable is defining the gender of the passenger. Basically, this variable is also have to set to factor, but the default type of the variable is character or string.
+As for the rest variables, such as name, ticket and cabin I think, I will print a few of them to see what is in the data.
 
 ```{r}
 titanic_raw_all %>% 
-  filter(source == "train set") %>% 
-  count(sex) %>% 
-  ggplot(aes(x = sex, y = n)) +
-  geom_bar(stat = "identity", width = 0.5, fill = "#228B22") +
-  geom_label(aes(label = n), vjust = 1, fill = "#bddbb8")
+    as_tibble() %>% 
+    select(name, ticket, cabin) %>% 
+    filter(cabin != "") %>% 
+    head(10)
 ```
 
-It seems that male passengers are more common on Titanic than female passengers. Now the main question for me is how gender actually related to survival rate of the passengers.
+From the data, I can see that names contain unique identifier such as Mrs, Mr, and Miss. This might be a useful feature to predict the survive condition. Let's see the distribution of this variable.
 
 ```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    count(sex, survived) %>% 
-    group_by(sex) %>% 
-    mutate(survived = as.factor(survived),
-           prop = n/sum(n)) %>% 
-    ggplot(aes(x = sex)) +
-    geom_bar(aes(y = prop, fill = survived), stat = "identity", position = "dodge", width = 0.5) +
-    scale_fill_manual(values = survived_color) +
-    geom_label(aes(y = prop, label = percent_format()(prop)), hjust = c(1.3,-0.3,1.3,-0.3))
-```
-
-The plot indicates very interesting fact that stated that by being a female, you can have about 74.2% of survive probability.
-
-### 3. Pclass Variable
-
-Pclass variable defines and describe about the social class of a person. The higher the pclass, the higher the class.
-
-```{r}
-titanic_raw_all %>% 
-    mutate(pclass = factor(pclass, level = c(1,2,3))) %>%
-    ggplot(aes(x = pclass)) +
-    geom_bar(fill = "#228B22", width = .5) +
-    geom_label(aes(label = after_stat(count)), stat = "count",
-               vjust = 1, width = 0.5, fill = "#bddbb8")
-```
-
-There are three types of the class, represented by number 1 to 3. Number 1 represents the highest class, and 3 represents the lowest class. Just like an economic class, pclass number 3 has the largest proportion.
-
-In theory, the higher the class of the person, the higher the survival chance of them due to exclusivity and privilege. Take a look at the following graph.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>%  
-    count(pclass, survived) %>% 
-    group_by(pclass) %>%
-    mutate(pclass = factor(pclass, level = c(1,2,3)),
-           prop = n/sum(n),
-           survived = as.factor(survived)) %>% 
-    ggplot(aes(x = pclass, y = prop)) +
-    geom_bar(aes(fill = survived), position = "dodge", stat = "identity", width = 0.5) +
-    geom_label(aes(label = percent_format()(prop)), hjust = rep(c(1, -0),3)) +
-    scale_fill_manual(values = survived_color)
-```
-
-As expected, the higher the pclass, the better their survival live. The next question is how pclass is related to sex variable?
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>%  
-    count(sex, pclass, survived) %>% 
-    group_by(sex, pclass) %>%
-    mutate(pclass = factor(pclass, level = c(1,2,3)),
-           prop = n/sum(n),
-           survived = as.factor(survived)) %>% 
-    ggplot(aes(x = pclass, y = prop)) +
-    geom_bar(aes(fill = survived), position = "dodge", stat = "identity", width = 0.5) +
-    geom_label(aes(label = percent_format()(prop)), hjust = rep(c(1, -0),6),
-               size = 3) +
-    facet_grid(. ~ sex) +
-    scale_fill_manual(values = survived_color)
-```
-
-I think from the trend wise, the chart indicates that pclass variable is independent towards gender. It has higher survival rate for pclass 1 and lowest survival rate for pclass 3 no matter what the gender is.
-
-### 4. Fare Variable
-
-Fare variable defines how much Titanic's passengers spend to get onboarded into Titanic ship. Since fare variable is a continuous variable, I will start exploring them using histogram.
-
-```{r}
-titanic_raw_all %>%
-    ggplot(aes(x = fare)) +
-    geom_histogram(fill = survived_color['1']) +
-    scale_x_continuous(breaks = c(seq(1, 100, 20),seq(100, 500, 100)))
-```
-
-The fare variable is very right skewed. I also Found some outliers in the data.
-
-```{r}
-titanic_raw_all %>%
-    filter(!is.na(survived)) %>% 
-    ggplot(aes(x = fare)) +
-    # geom_histogram(aes(y = ..density.., fill = as.factor(survived)), alpha = 0.3) +
-    geom_density(aes(fill = as.factor(survived)), alpha = 0.3, col = NA) +
-    scale_x_continuous(breaks = seq(0, 500, 30)) +
-    # facet_wrap(survived ~ ., scales = "free_x") +
-    scale_fill_manual(values = survived_color)
-```
-
-The graph indicates that at a glance, the survival and not survival passengers have different distribution plot. The graph said that the higher the fare, the higher the survival rate will be. The graph also indicates that I have outliers in the data. To overcome this outliers, I think I will grouping the data into bucket. The question is, what is the bucket that we can use?
-
-```{r}
-titanic_raw_all %>%
-    summarize(fare_25 = quantile(fare, 0.25, na.rm = TRUE),
-              fare_50 = quantile(fare, 0.5, na.rm = TRUE),
-              fare_75 = quantile(fare, 0.75, na.rm = TRUE))
-```
-
-I will try splitting the data based on their quantile values.
-
-```{r}
-titanic_raw_all %>%
-    filter(!is.na(survived)) %>% 
-    mutate(fare_category = factor(case_when(between(fare, 0, 8) ~ "(0, 8)",
-                                            between(fare, 9, 14) ~ "[8, 14)",
-                                            between(fare, 15, 31) ~ "[14, 31)",
-                                     fare > 31 ~ "(31,]"),
-                                  levels = c("(0, 8)", "[8, 14)", "[14, 31)", "(31,]"))) %>% 
-    ggplot(aes(x = fare_category)) + 
-    geom_bar(aes(fill = as.factor(survived)), position = "dodge", width = 0.5) +
-    scale_fill_manual(values = survived_color)
-```
-
-Based on this bucketing, the low fare data (between 0 and 8) is mostly filled by not survived passengers. While the highest fare bucket (\> 31) has higher survival rate.
-
-### 5. Embarked Variable
-
-Embarked variable talks about the port where the passengers are embarked from.
-
-```{r}
-titanic_raw_all %>% 
-    ggplot(aes(x = forcats::fct_infreq(embarked))) +
-    geom_bar(fill = survived_color['1'], width = 0.5) +
-    geom_label(aes(label = after_stat(count)), stat = "count", vjust = 0,
-               fill = "#bddbb8")
-```
-
-Now, the next question is, how is the survival rate for each of the category.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    ggplot(aes(x = forcats::fct_infreq(embarked))) +
-    geom_bar(aes(fill = as.factor(survived)), position = "dodge", width = 0.5) +
-    scale_fill_manual(values = survived_color)
-```
-
-The chart shows that people who gets embarked from S port has lower survival rate. But the question is, how can this embarked port affects survival rate?
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    ggplot(aes(x = forcats::fct_infreq(embarked))) +
-    geom_bar(aes(fill = as.factor(survived)), position = "dodge", width = 0.5) +
-    geom_label(aes(label = after_stat(count)), stat = "count",
-               fill = "#bddbb8") +
-    scale_fill_manual(values = survived_color) +
-    facet_wrap(. ~ pclass)
-```
-
-So, basically people who embarked from Southampton port are mostly people with pclass 3. Hence the survival rate is very low. While people embarked from port Queenstown are mostly people with highest pclass.
-
-### 6. Age Variable
-
-Age variable stores information about how old the passenger is. Since this is a numeric variable, I will start with histogram.
-
-```{r}
-#| warning: false
-#| message: false
-titanic_raw_all %>% 
-    ggplot(aes(x = age)) +
-    geom_histogram(fill = survived_color['1'])
-```
-
-The histogram plot indicates that the data is right skewed with some outliers. Before dealing with the outliers, I will check the density distribution first.
-
-```{r}
-titanic_raw_all %>% 
-    filter(source == "train set") %>% 
-    ggplot(aes(x = age)) +
-    geom_density(aes(fill = as.factor(survived)), width = 0.5, alpha = 0.4) +
-    scale_fill_manual(values = survived_color) +
-    scale_x_continuous(breaks = seq(0, 80, 5))
-```
-
-The density distribution says that
-
-```{r}
-titanic_raw_all %>% 
-    filter(source == "train set") %>% 
-    ggplot(aes(x = age)) +
-    geom_density(aes(fill = as.factor(survived)), alpha = 0.4) +
-    scale_fill_manual(values = survived_color) +
-    scale_x_continuous(breaks = seq(0, 80, 5)) +
-    facet_grid(. ~ sex, scales = "free")
-```
-
-AS for the age, I think I will group them into bucket to see if each bucket has different pattern.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(age_category = factor(case_when(between(round(age), 0, 14) ~ "children",
-                                           between(round(age), 15, 24) ~ "teenager",
-                                           round(age) > 24 ~ "adult"),
-                                           levels = c("children", "teenager",
-                                                      "adult"))) %>% 
-    ggplot(aes(x = age_category)) + 
-    geom_bar(aes(fill = as.factor(survived)), position = "dodge", width = 0.5) +
-    scale_fill_manual(values = survived_color)
-```
-
-Based on the chart, I think, only children who has better survival rate. Now, I will check the pattern accross gender.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(age_category = factor(case_when(between(round(age), 0, 14) ~ "children",
-                                           between(round(age), 15, 24) ~ "teenager",
-                                           round(age) > 24 ~ "adult"),
-                                           levels = c("children", "teenager",
-                                                      "adult"))) %>% 
-    ggplot(aes(x = age_category)) + 
-    geom_bar(aes(fill = as.factor(survived)), position = "dodge", width = 0.5) +
-    facet_wrap(. ~ sex) +
-    scale_fill_manual(values = survived_color)
-```
-
-### 7. Passenger ID variable
-
-This variable is basically just a random value assigned to the passenger. It purposes is to easily identify the passenger uniquely, hence I will just [drop]{color="danger"} them.
-
-### 8. Name Variable
-
-In simple, name is something that everybody has. It is attached to a person but not unique for each person. I and you might have the same name. So basically, it just a random values attached to us to identify ourself and nothing to do with survival life. Naturally it will and should be deleted. But in this titanic data, name comes with a unique thing that further can be used to identify socio economic class, such as Mr, Mrs, Jonkheer, etc.
-
-```{r}
+#| fig-height: 3.5
 name_decoder <- function(x) {
     x = as.character(x)
     ses_name = sapply(x, function(y) { strsplit(y, ", ")[[1]][2]})
@@ -437,527 +201,616 @@ name_decoder <- function(x) {
     return(identifier_name)
 }
 titanic_raw_all %>% 
-    mutate(names = name_decoder(name)) %>% 
-    ggplot(aes(x = forcats::fct_infreq(names))) +
-    geom_bar(fill = survived_color["1"], width = .5) +
-    theme(axis.text.x = element_text(angle = 90)) +
-    labs(title = "Distribution of SES in Titanic Data",
-         x = "SES Based On Name",
-         y = "Countc")
+    mutate(ses_name = name_decoder(name)) %>% 
+    select(ses_name) %>% 
+    DataExplorer::plot_bar(theme_config = used_theme,
+                           ggtheme = ggplot2::theme_set(used_theme))
 ```
 
-The SES in names are dominated by 4 big categories. Since there too many categories with low data point, I think they can be lumped into 'other'.
+Interesting. It seems that there are various sosio economic status here that can be explored further.
 
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(names = name_decoder(name),
-           survived = as.factor(survived)) %>% 
-    mutate(names = case_when(names %in% c("Mr", "Miss", "Mrs", "Master") ~ names, TRUE ~ "other")) %>% 
-    ggplot(aes(x = forcats::fct_infreq(names))) +
-    geom_bar(aes(fill = survived), position = "dodge", width = .5) +
-    theme(axis.text.x = element_text(angle = 90)) +
-    scale_fill_manual(values = survived_color)
-```
-
-As expected, the people with "Mr" has low survival rate compared to Master. It indicates that grown man has lower survival probability than the younger one. The interesting fact is that Miss as not yet married female (can be considered as younger) has lower survival probability than the married one.
-
-In fact, Mr, Mrs, Miss, and Master are very related to gender. So we can say that those SES is closely related to gender. Considering this thing, I will take a look at the gender.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(names = name_decoder(name),
-           survived = as.factor(survived)) %>% 
-    mutate(names = case_when(names %in% c("Mr", "Miss", "Mrs", "Master") ~ names, TRUE ~ "other")) %>% 
-    ggplot(aes(x = forcats::fct_infreq(names))) +
-    geom_bar(aes(fill = survived), position = "dodge", width = .5) +
-    theme(axis.text.x = element_text(angle = 90)) +
-    scale_fill_manual(values = survived_color) +
-    facet_wrap(. ~ sex, scales = "free")
-```
-
-The data based on gender said that Other category on female are all survive, while on male categories, almost all type of SES name have lower survival rate but other.
-
-### 9. Sibling and spouse Variable
-
-Sibling and spouse variable is represented by sib_sp. It is talking about how many siblings and or spouse brought into the ship.
-
-```{r}
-titanic_raw_all %>%
-    filter(!is.na(survived)) %>% 
-    mutate(survived = as.factor(survived)) %>% 
-    ggplot(aes(x = sib_sp)) +
-    geom_bar(aes(fill = survived), width = .5 ,position = "dodge") +
-    scale_x_continuous(breaks = 0:8) +
-    scale_fill_manual(values = survived_color)
-```
-
-It seems that the probability of survive will greatly increase if you have only 1 siblings or spouse. The probability seems to drop either you don't have siblings or spouse or you have more siblings or spouse. I think, this condition is very closely related to gender. In fact for example, if you are a woman and you have husband, you will be more likely to survive. I also need to confirm whether the people with 0 sib_sp and survive are dominated by male or not.
-
-```{r}
-titanic_raw_all %>%
-    filter(!is.na(survived)) %>% 
-    mutate(survived = as.factor(survived)) %>% 
-    ggplot(aes(x = sib_sp)) +
-    geom_bar(aes(fill = survived), width = .5, position = "dodge") +
-    scale_x_continuous(breaks = 0:8) +
-    facet_grid(sex ~ ., scales = "free_y") +
-    scale_fill_manual(values = survived_color)
-```
-
-The chart indicated that for male, no matter how many siblings and spouse you have, you will have low survival rate. While for female, having more siblings seem a problem.
-
-### 10. Parch Variable
-
-Parch variable talks about parents and or children get onboarded into the ship.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(survived = as.factor(survived)) %>%
-    ggplot(aes(x = parch)) +
-    geom_bar(aes(fill = survived), width = .5, position = "dodge") +
-    scale_x_continuous(breaks = 0:8) +
-    scale_fill_manual(values = survived_color)
-```
-
-I think parch variable has the same pattern with sib_sp variable, the more children you have, the lower your survival rate will be. The next question is about the trend across gender. Are they also share same pattern?
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>% 
-    mutate(survived = as.factor(survived)) %>%
-    ggplot(aes(x = parch)) +
-    geom_bar(aes(fill = survived), width = .5, position = "dodge") +
-    scale_x_continuous(breaks = 0:8) +
-    facet_grid(sex ~ ., scales = "free_y") +
-    scale_fill_manual(values = survived_color)
-```
-
-Since both data represents same pattern even across gender, they are naturally highly correlated. Take a look at the following chart.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>%
-    select(sib_sp, parch, survived) %>% 
-    DataExplorer::plot_correlation(title = "Correlation Between Survival Rate, Parch, and Sib_sp Variables")
-```
-
-As seen that parch and sib_sp is 41% positively correlated, and only has 0.08, and -0.04 correlation with survival rate. This gives me an idea. What if I merged both of them into a single category to explain the family size.
-
-```{r}
-titanic_raw_all %>% 
-    filter(!is.na(survived)) %>%
-    ggplot(aes(x = as.numeric(parch) + as.numeric(sib_sp) + 1)) +
-    geom_bar(aes(fill = as.factor(survived)), width = .5, position = "fill") +
-    scale_x_continuous(breaks = 0:11) +
-    scale_fill_manual(values = survived_color) +
-    facet_grid(sex ~ ., scales = "free")
-```
-
-I think, the chart still gives me same pattern but now in more robust information. Based on the family size, I can create new grouping variable I will called as family category. To divide them into bucket or group, I will use the following rules:
-
--   If the number of family size is 1, then it will be categorized as `no family`.
-
--   If the number of family size is between 2 and 3, then it will be categorized as small family
-
--   If the number of family size is 4, then it will be categorized as medium family
-
--   If the number of family size is greater than 4, then it will be categorized as big family.
-
-### 11. Ticket Variable
-
-The ticket variable contains a random variable. In fact, in this data, I found out that some people have equal ticket values.
+As for  ticket, it seems that there is a specific pattern found. For example, Ryerson, Mrs. Arthur Larned (Emily Maria Borie) and Chevre, Mr. Paul Romaine have ticket that together started with "PC". I think they are correlated somehow like departed from the same port. Now, I think I will check if the ticket can show some groups.
 
 ```{r}
 titanic_raw_all %>% 
     count(ticket) %>% 
-    top_n(10, n) %>% 
-    arrange(desc(n))
+    # count(n) %>% 
+    transmute(ticket_group = as.factor(n)) %>% 
+    DataExplorer::plot_bar(theme_config = used_theme,
+                           ggtheme = ggplot2::theme_set(used_theme))
 ```
 
-I am afraid that there is correlation between the number of ticket and the survival rate.
+The plot indicates that most of the passengers are traveling alone where they mostly have ticket group equal to 1. I think, this information is also can be useful in the future.
+
+Now, talking about cabin. One of the reason why so many people not survive is the failed to get life boat. The cabin's position defining the possibility to get into boat. Titanic cabin plan as explain [here](https://www.encyclopedia-titanica.org/titanic-deckplans/a-deck.html) area consisted of boat deck, A deck, B deck, C deck, D deck, E deck, F deck, and G deck.
 
 ```{r}
 titanic_raw_all %>% 
-    left_join(titanic_raw_all %>% count(ticket) %>% filter(ticket != "", !is.na(ticket)), by = "ticket") %>%
+    transmute(cabin = case_when(grepl("A", cabin) ~ "A",
+                             grepl("B", cabin) ~ "B",
+                             grepl("C", cabin) ~ "C",
+                             grepl("D", cabin) ~ "D",
+                             grepl("E", cabin) ~ "E",
+                             grepl("F", cabin) ~ "F",
+                             grepl("G", cabin) ~ "G",
+                             TRUE ~ cabin)) %>% 
+    DataExplorer::plot_bar(theme_config = used_theme,
+                           ggtheme = ggplot2::theme_set(used_theme))
+```
+
+Many passengers have unknown cabin position. It is represented by the blank data of the cabin. considering that there are some known cabins to be explored, I think I can fill the missing with M to represent unknown data.
+
+#### [Numeric Variables]{color="info"}
+
+```{r}
+#| fig-height: 4
+titanic_raw_all %>% 
+    select(where(is.numeric)) %>%
+    DataExplorer::plot_histogram(theme_config = used_theme,
+                           ggtheme = ggplot2::theme_set(used_theme),
+                           nrow = 2L, ncol = 3L)
+```
+
+Based on its histogram, the age seems to be concentrated around 20 to 40 years old. I think there is outlier indeed found in the data, but I think it is a true values of the data and Will not do anything to it.
+
+While fare variable seems to be very right skewed due to so many passengers buy the cheapest fare. The parch variable has poisson distribution where most of the values lies on 0. It means that most of the passengers have no parents and or children. Passenger_id variable looks uniform since passenger id is just an ID to uniquely identify each passenger. The sib_sp variable is like parch variable, it has poisson distribution where the most values are 0 that indicates people have no sibling and or spouse gets on-boarded on the ship.
+
+Take a look at the passenger id variable. It looks like a uniform distributed. While, it is because the passenger id is just a random values used to uniquely identify each passenger. Since I can't see the use of that other than only as unique identifier, I will not analyze it further.
+
+### [Bivariate Data Analysis]{color="secondary"}
+
+#### [Nominal Vaiable vs Target]{color="info"}
+
+```{r}
+#| fig-height: 4
+name_decoder <- function(x) {
+    x = as.character(x)
+    ses_name = sapply(x, function(y) { strsplit(y, ", ")[[1]][2]})
+    identifier_name = sapply(ses_name, function(x) {strsplit(x, ".", fixed = TRUE)[[1]][1]})
+    identifier_name <- ifelse(identifier_name %in% c("Mr", "Miss", "Mrs", "Master"), identifier_name, "Other")
+    return(identifier_name)
+}
+titanic_raw_all %>% 
     filter(!is.na(survived)) %>% 
-    mutate(survived = as.factor(survived)) %>% 
-    ggplot(aes(x = n)) +
-    geom_bar(aes(fill = survived), position = "dodge") +
-    scale_x_continuous(breaks = 1:11)
+    mutate(cabin = factor(case_when(grepl("A", cabin) ~ "A",
+                             grepl("B", cabin) ~ "B",
+                             grepl("C", cabin) ~ "C",
+                             grepl("D", cabin) ~ "D",
+                             grepl("E", cabin) ~ "E",
+                             grepl("F", cabin) ~ "F",
+                             grepl("G", cabin) ~ "G",
+                             cabin == "" ~ "M",
+                             TRUE ~ cabin), levels = c("A", "B", "C", "D", "E", "F", "G", "T", "M")),
+           ses_name = factor(name_decoder(name), levels = c("Mr", "Miss", "Mrs", "Master", "Other"))) %>% 
+    select(where(is.character), where(is.factor)) %>%
+    select(-source) %>% 
+    DataExplorer::plot_bar(theme_config = used_theme,
+                           ggtheme = ggplot2::theme_set(used_theme),
+                           nrow = 2L,
+                           ncol = 3L,
+                           by = "survived")
 ```
 
-It seems that people who shares 2,3 and 4 same tickets has higher survival rate. I think, I will insert this feature into my raw data.
+I think, all those 5 variables have an effect on survivability. Let's take pclass for example, the higher the class, the higher the probability of the passengers to survive. This indicates that pclass variable is good enough to distinguish between the one who survived and the one who is not.
 
-```{r}
-titanic_raw_all %<>%
-    left_join(titanic_raw_all %>% count(ticket) %>% filter(ticket != "", !is.na(ticket)), by = "ticket") %>% 
-    rename(ticket_num = n)
-```
+Then, come sex variable. It can also distinguish between the survive and not. Even we can say, if by any chance the algorithm said that all the woman is survive and all the men is not, it might have greater than 75% in term of accuracy.
 
-### 12. Cabin
+As for cabin, it seems that there is no significant difference between cabin D, E, and B, and also between C and F. Even though they show no difference, I think I will use them as is without grouping them into 1 cabin group. This is because they might have different effect when another variables take place.
 
-The cabin variable mostly talk about the cabin name/code where the passengers placed. But somehow, there are so many NAs in this data.
+As for embarked variable, it also indicates that there are some difference of survivability between the one who were embarked from S, C, and Q port. There are missing values found in the data. Let me check them out.
 
 ```{r}
 titanic_raw_all %>% 
-    mutate(cabin = case_when(cabin == "" ~ NA, TRUE ~ "has cabin")) %>% 
-    count(survived,cabin)
+    filter(embarked == "")
 ```
 
-There is about 1014 or 77% the data is missing. This is of course hard to interpret or guess the missing values. Hence, I think I will drop the variable.
+Based on [this source](https://www.encyclopedia-titanica.org/) both of those people were embarked from Southampthon.
 
-## DATA MODELING
+As for ses_name variable, just like sex variable, I can see strong difference of survivability between the one entitled as Mr, Miss, Mrs, Master and other. Hence I think, this variable is also a good feature to be included.
 
-My data modelling will consist of
+#### [Numerical Variable vs Target]{color="info"}
 
--   data preprocessing
+```{r}
+#| warning: False
+#| info: False
+#| fig-height: 4.5
+library(data.table)
+plot_histogram_ <- function (data, binary_as_factor = TRUE, geom_histogram_args = list(bins = 30L, alpha = 0.4), 
+    scale_x = "continuous", title = NULL, ggtheme = theme_gray(), 
+    theme_config = list(), nrow = 4L, ncol = 4L, parallel = FALSE) 
+{
+    variable <- value <- NULL
+    if (!is.data.table(data))
+        data <- data.table(data)
+    split_data <- DataExplorer::split_columns(data, binary_as_factor = binary_as_factor)
+    if (split_data$num_continuous == 0) 
+        stop("No continuous features found!")
+    continuous <- split_data$continuous
+    feature_names <- 
+        names(continuous)
+    continuous$survived <-  data$survived
+    dt <- suppressWarnings(melt.data.table(continuous, measure.vars = feature_names, 
+        variable.factor = FALSE))
+    layout <- DataExplorer:::.getPageLayout(nrow, ncol, ncol(continuous)-1)
+    plot_list <- DataExplorer:::.lapply(parallel = parallel, X = layout, FUN = function(x) {
+        ggplot(dt[variable %in% c(feature_names[x], "survived")], aes(x = value, fill = survived), position = "fill") + 
+            do.call("geom_density", c(na.rm = TRUE, geom_histogram_args)) + 
+            do.call(paste0("scale_x_", scale_x), list()) + ylab("Frequency")
+    })
+    class(plot_list) <- c("multiple", class(plot_list))
+    DataExplorer::plotDataExplorer(plot_obj = plot_list, page_layout = layout, 
+        title = title, ggtheme = ggtheme, theme_config = theme_config, 
+        facet_wrap_args = list(facet = ~variable, nrow = nrow, 
+            ncol = ncol, scales = "free"))
+}
+ticket_count <- titanic_raw_all %>% 
+    count(ticket) %>% 
+    rename(ticket_num = n)
 
--   feature engineering
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    select(-passenger_id) %>% 
+    left_join(ticket_count, by = "ticket") %>% 
+    select(where(is.numeric), survived) %>%
+    plot_histogram_(theme_config = used_theme,
+                    ggtheme = ggplot2::theme_set(used_theme),
+                    nrow = 2L, ncol = 3L)
+```
 
--   model training
+Based on the plot, I can see there seems difference between the distribution of the survive and the non survive passengers. Take fare and age for example. The peak of the distribution for survived passengers are around 25 while for non survived passengers are around 20 years old. While for fare, it seems that the higher the fare, the higher the survivability that the passengers have.
 
--   model evaluation
+### [Multivariate Data Analysis]{color="secondary"}
 
--   model selection
+Multivariate analysis used to answer some question where more than two variables needed.
 
--   model hyper parameter tuning
+#### [1. Passenger's Class Is Independent to Gender]{color="info"}
 
--   model prediction
+Hypothetically, I would like to see that passenger's class is not related to their gender.
 
-### Data Preprocessing
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    ggplot(aes(x = pclass, fill = survived)) +
+    geom_bar(width = 0.5, position = "fill") +
+    facet_wrap(. ~ sex)
+```
 
-In this preprocessing data, I will use 4C frameworks (chopping, cleaning, completing, correcting) and tidy principal. I will use tidy model and utilize recipe to preprocess and model the data.
+Considering the plot, where pclass 1 always has highest survival rate across gender, I think passenger's class has nothing to do with gender.
 
-#### Data Chopping/Splitting
+#### [2. Fare Is Very Related to Passenger's Class]{color="info"}
 
-I will split the data into 3 types of data. The first one is the training data set that will consist of 70% of the training set data, while the rest of the 30% will be testing set to test the model. The third one is the validation set that will be submit to kaggle to measure the final result.
+Previously it was found that fare has some missing values. In my opinion, the fare should be related to passenger's class. It is like, the higher the fare, the higher the class and the better facilities will be enjoyed by the passengers.
 
-```{r echo=TRUE}
-i_train <- initial_split(titanic_raw_all %>% filter(source == "train set") %>% select(-source), prop = 0.7)
+```{r}
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>%
+    left_join(ticket_count, by = "ticket") %>% 
+    # filter(ticket == "CA 2144")
+    mutate(fare_person = fare/as.numeric(ticket_num)) %>% 
+    ggplot(aes(x = fare)) +
+    geom_histogram(width = 0.5) +
+    facet_wrap(. ~ pclass, scales = "free")
+```
 
-train_set <- training(i_train)
+As seen, the range of fare for each class is slightly different.
+
+```{r}
+titanic_raw_all %>% 
+    group_by(pclass) %>% 
+    reframe(min_fare = min(fare, na.rm = TRUE),
+            max_fare = max(fare, na.rm = TRUE)) %>% 
+    as_tibble()
+```
+
+One thing that is the same from all the class type is the minimum values. All classes started from 0. There are so many reasons why those people have 0 fares. Let's take Leonard, Mt. Lionel for example. The fare is 0 because they were given the third class accommodation from LINE company to get back to America.
+
+```{r}
+servant_data <- read.csv(here::here("data/titanic/servant_data.csv")) %>% 
+                             select(passenger_id, is_servant)
+titanic_raw_all %>%
+    left_join(servant_data, by = "passenger_id") %>% 
+    filter(fare == 0) %>% 
+    select(name, fare, is_servant, ticket, survived, cabin, passenger_id)
+```
+
+In fact, those people which had 0 fare, has their own story. Take Reuchlin, Jonkheer. John George for example. Person who has passenger ID of 823 here got free ticket due to his position with Holland America Line which was part of the International Mercantile Marine.
+
+Another think that I would like to check is about the missing value in fare.
+
+```{r}
+titanic_raw_all %>% 
+    filter(is.na(fare))
+```
+
+Based on this source, the person who has missing value in their fare is Storey, Mr. Thomas. Based on this [source](https://www.encyclopedia-titanica.org/titanic-victim/thomas-storey.html), he is also part of postophoned Philadelpia westbound voyage along with Leonard, Mr. Lionel and the others. Based on this fact, then his fare value should be 0, since it is sponsored.
+
+#### [3. Age Ranges Based on Their SeS Title]{color="info"}
+
+Previously mentioned that age has some missing values on it. I believe the that the best way to fil the missing values is by grouping based on their SeS title and not their age or class. Let me show you why.
+
+```{r}
+cat("Age range based on SeS name.\n")
+titanic_raw_all %>% 
+    mutate(ses_name = name_decoder(name)) %>% 
+    group_by(ses_name) %>% 
+    reframe(total_data = n(),
+            average = mean(age, na.rm = TRUE),
+            min_age = min(age, na.rm = TRUE),
+            max_age = max(age, na.rm = TRUE)) %>% 
+    filter(total_data > 1)
+cat("Age range based on gender.\n")
+titanic_raw_all %>%  
+    group_by(sex) %>% 
+    reframe(total_data = n(),
+            average = mean(age, na.rm = TRUE),
+            min_age = min(age, na.rm = TRUE),
+            max_age = max(age, na.rm = TRUE))
+```
+
+It is valid that the gender can not be used to range the age, SeS title instead.
+
+## [D. Data Preprocessing]{color="title"}
+
+### [Data Splitting]{color="secondary"}
+
+I will split the data into 3 parts, the training data, testing data, and validating data. I also want to build cross validation set from training data set.
+
+```{r}
+#| echo: true
+train_test_source <- titanic_raw_all %>% 
+    filter(source == "train set")
+
+train_idx <- initial_split(train_test_source, prop = 0.8)
+
+train_set <- training(train_idx)
 
 cross_val <- mc_cv(train_set)
-    
-test_set <- testing(i_train)
+
+test_set <- testing(train_idx)
 
 val_set <- titanic_raw_all %>% 
     filter(source == "test set") %>% 
     select(-source)
 ```
 
-I will use tidymodels paradigm to build my model, and defining my recipe using training data set. In the early setup, I will only add survived as outcome.
+### [Data Cleaning]{color="secondary"}
 
-```{r}
-#| echo: true
-my_recipe <- recipe(train_set) %>% 
-    update_role(survived, new_role = "outcome")
-```
-
-#### Cleaning
-
-Due to their usage, some variables might not be used as the predictor or outcome. I will simply add them as ids type of variables.
-
-```{r}
-#| echo: true
-my_recipe_clean <- my_recipe %>% 
-    update_role(passenger_id, ticket, cabin, name, new_role = "ids")
-```
-
-#### Completing
-
-Completing process is a step to filling out missing data. It is also known as handling missing values step.
-
-```{r}
-# correcting the age data format to integer
-titanic_raw_all %>% 
-    select(-c(source,survived)) %>% 
-    DataExplorer::plot_missing(missing_only = TRUE, theme_config = used_theme)
-```
-
-Previously, there were 3 variables have missing values. But now, the plot stated that there are only 2 variables. The reason behind this is that the missing values on embarked variable is not missing values, instead it is an empty string (""). Hence, I need to convert it first to missing values in order to ensure that it is acknowledged as missing values.
+Previously I know that the data contains missing values that need to be fixed. First let me display the missing data again.
 
 ```{r}
 titanic_raw_all %>% 
-    select(-c(source,survived)) %>% 
-    mutate(embarked = if_else(embarked == "", NA, embarked)) %>% 
+    select(-survived) %>% 
+    mutate(cabin = case_when(grepl("A", cabin) ~ "A",
+                             grepl("B", cabin) ~ "B",
+                             grepl("C", cabin) ~ "C",
+                             grepl("D", cabin) ~ "D",
+                             grepl("E", cabin) ~ "E",
+                             grepl("F", cabin) ~ "F",
+                             grepl("G", cabin) ~ "G",
+                             cabin == "" ~ NA,
+                             TRUE ~ cabin),
+           embarked = case_when(embarked == "" ~ NA, TRUE ~ embarked)) %>% 
     DataExplorer::plot_missing(missing_only = TRUE, theme_config = used_theme)
 ```
 
-Based on previous exploration, the missing values on embarked variable can be filled using mode, while age can be filled using mean, and fare variable can be filled using median.
+Mostly, there are 4 variables with missing values found in the data. For cabin, I will fill the missing values with "M" that represents missing values for the cabin.
 
-```{r filling_missing_values, echo=TRUE}
-recipe_complete <- my_recipe_clean %>% 
-    step_mutate(embarked = if_else(embarked == "", NA, embarked)) %>% 
-    step_impute_median(age) %>% 
-    step_impute_mode(embarked) %>% 
-    step_mutate(embarked = droplevels(as.factor(embarked))) %>% 
-    step_impute_median(fare)
+For age, I will fill the values using mean, since the data indicates that the distribution is a bit normal for the age. but, filling up age missing values have to consider their age range. For example, if the person is a "Master" then the average values of the age should be 7 years old. While if the person is a "Miss", then the average values can't be less than 17 years old assuming that people will get married at 17 years old at minimum.
+
+For fare, I will input the values as 0 since the data that missing is coming from sponsored passenger which has 0 fare.
+
+As for cabin, I will first simply put their initial cabin name, and put M when it is a missing values.
+
+In order to clean up the data, I will first create a recipe to be used until final work. But, since tidyverse not supporting imputation based on group yet, I will impute the missing age data using the training set manually.
+
+```{r}
+age_per_group <- train_set %>% 
+    mutate(ses_name = name_decoder(name)) %>% 
+    group_by(ses_name) %>% 
+    reframe(mean_age = mean(age, na.rm = TRUE))
+
+train_set <- train_set %>% 
+    mutate(ses_name = name_decoder(name)) %>% 
+    left_join(age_per_group, by = "ses_name") %>% 
+    left_join(ticket_count, by = "ticket") %>% 
+    mutate(age = coalesce(age, mean_age)) %>% 
+    select(-mean_age, -ses_name)
+
+cross_val <- mc_cv(train_set)
+
+test_set <- test_set %>% 
+    mutate(ses_name = name_decoder(name)) %>% 
+    left_join(age_per_group, by = "ses_name") %>%
+    left_join(ticket_count, by = "ticket") %>% 
+    mutate(age = coalesce(age, mean_age)) %>% 
+    select(-mean_age, -ses_name)
+
+val_set <- val_set %>% 
+    mutate(ses_name = name_decoder(name)) %>% 
+    left_join(age_per_group, by = "ses_name") %>% 
+    left_join(ticket_count, by = "ticket") %>% 
+    mutate(age = coalesce(age, mean_age)) %>% 
+    select(-mean_age, -ses_name)
+
+titanic_recipe <- recipe(train_set %>% select(-source)) %>%
+    update_role(survived, new_role = "outcome") %>% 
+    update_role(name, passenger_id, ticket, new_role = "ids") %>% 
+    update_role(sex, pclass, age, fare, parch, sib_sp, embarked, cabin, ticket_num, new_role = "predictor") %>% 
+    step_string2factor(all_nominal_predictors())
+
+titanic_recipe_clean <- titanic_recipe %>% 
+    step_mutate(fare = case_when(is.na(fare) ~ 0, TRUE ~ fare),
+                embarked = factor(case_when(embarked == "" ~ "S", TRUE ~ embarked), levels = c("S", "Q" ,"C")),
+                cabin = factor(case_when(grepl("A", cabin) | grepl("T", cabin) ~ "A",
+                             grepl("B", cabin) ~ "B",
+                             grepl("C", cabin) ~ "C",
+                             grepl("D", cabin) ~ "D",
+                             grepl("E", cabin) ~ "E",
+                             grepl("F", cabin) ~ "F",
+                             grepl("G", cabin) ~ "G",
+                             cabin == "" & pclass == 1 ~ "M1",
+                             cabin == "" & pclass == 2 ~ "M2",
+                             cabin == "" & pclass == 3 ~ "M3"),
+                             levels = c("A","B","C","D","E","F","G","M1", "M2", "M3"), ordered = TRUE))
 ```
 
-#### Correcting
+### [Feature Addition]{color="secondary"}
 
-This step is also known as handling outliers. In previous exploration, I found out that some data such as age and fare has some outliers. But based on the following information fare outliers seem natural data since the ticket ranging from 7 euros up to 870 euros.
+In this section I will add some features from external data. Take a look at the following example data.
 
-#### Converting
+```{r}
+servant_data <- read.csv(here::here("data/titanic/servant_data.csv"))
+titanic_raw_all %>% 
+    left_join(servant_data %>% select(passenger_id, is_servant), by = "passenger_id") %>% 
+    mutate(is_servant = coalesce(is_servant, FALSE)) %>% 
+    filter(pclass == 1, sex == "female") %>% 
+    # select(survived, is_servant, everything()) %>% 
+    count(survived, pclass, is_servant, sex)
+```
 
-Converting is meant to convert the data type into what it should be. Previously, I have found out that some variables need to be converted into certain types. For example, pclass needs to be converted into ordinal factor since it is stored as integer. Surived, embarked, name and sex variables should also be stored as factor.
+This is a condition from servant data, where all servant females proven to have higher survivability. Another data is about sponsored travel where they have 0 fare due to sponsorship for their travel
+
+```{r}
+sponsored_data <- read.csv(here::here("data/titanic/is_sponsored.csv"))
+titanic_raw_all %>%
+    left_join(sponsored_data, by = "passenger_id") %>% 
+    filter(is_sponsored, !is.na(survived)) %>% 
+    count(sex, survived)
+    # select(passenger_id)
+    
+```
+
+Another information that I would like to add is the data that indicates whether a passengers have servant or not.
+
+```{r}
+has_servant_data <- read.csv(here::here("data/titanic/has_servant_flag.csv"))
+titanic_raw_all %>% 
+    filter(!is.na(survived)) %>% 
+    left_join(has_servant_data, by = "passenger_id") %>% 
+    mutate(has_servant = coalesce(has_servant, FALSE)) %>% 
+    # filter(sex == "female") %>% 
+    count(sex, has_servant, survived) %>% 
+    ggplot(aes(x = has_servant, y = n)) +
+    geom_bar(aes(fill = survived), stat = "identity", position = "fill") +
+    facet_wrap(.~sex)
+```
+
+As seen in the plot, each gender category will have better survival percentage when they have servant compare to the one who doesn't.
+
+```{r}
+feat_add_recipe <- titanic_recipe_clean %>% 
+    update_role(passenger_id, new_role = "ids") %>% 
+    step_mutate(has_servant = case_when(passenger_id %in% has_servant_data$passenger_id ~ 1, TRUE ~ 0),
+                is_servant = case_when(passenger_id %in% servant_data$passenger_id ~ 1, TRUE ~ 0)
+                # is_sponsored = case_when(passenger_id %in% sponsored_data$passenger_id ~ 1, TRUE ~ 0)
+                )
+```
+
+### [Feature Engineering]{color="secondary"}
+
+#### [1. Feature Extraction]{color="info"}
+
+In this feature extraction, I will extract some features based on previous exploration.
+
+```{r}
+feat_extraction_recipe <- feat_add_recipe %>% 
+    step_mutate(ses_name = factor(name_decoder(name), levels = c("Mr", "Miss", "Mrs", "Master", "Other")),
+                age_category = factor(case_when(between(age, 0, 14) ~ "children",
+                                         between(age, 15, 20) ~ "teenager",
+                                         between(age, 20, 50) ~ "adult",
+                                         age > 50 ~ "old"), levels = c("children", "teenager", "adult", "old")),
+                family_size = sib_sp + parch + 1)
+```
+
+
+#### [2. Feature Transformation]{color="info"}
+
+```{r}
+feat_transform_recipe <- feat_extraction_recipe %>% 
+    step_mutate(pclass = factor(pclass, ordered = TRUE, levels = c("1", "2", "3"))) %>% 
+    step_normalize(fare, age)
+```
+
+#### [3. Feature Selection]{color="info"}
+
+**Variable Correlation**
+
+```{r}
+correlation <- 
+    cor(feat_transform_recipe %>%
+            step_select(all_numeric_predictors(), survived) %>%
+            step_mutate(survived = as.numeric(survived)) %>%
+            prep() %>%
+            bake(NULL))
+
+correlation %>% 
+    as_tibble() %>% 
+    select(survived) %>% 
+    mutate(var = row.names(correlation)) %>% 
+    select(var, survived) %>% 
+    arrange(desc(abs(survived)))
+```
+
+Based on the correlation plot, using 0.02 as a threshold, I think family_size is not so significant.
+
+```{r}
+feat_select_recipe <- feat_transform_recipe %>%
+    step_rm(family_size)
+```
+
+
+**Information Value For Categorical Variable**
+
+```{r}
+# predictor
+res <- NA
+feat_transform_recipe %>% 
+    step_select(all_nominal_predictors(), all_outcomes()) %>% 
+    prep() %>% 
+    bake(NULL) %>% 
+    with({
+        total_col <- ncol(.) - 1
+        col_name <- colnames(.)
+        for (i in seq(total_col)) {
+            iv <- InformationValue::IV(.[[col_name[i]]], survived)
+            data <- data.frame(variable = col_name[i],
+                               iv = iv[1],
+                               status = attributes(iv)[[1]])
+            if (is.null(res)) {
+                res <<- data
+            } else {
+                res <<- res %>%
+                    rbind(data) %>% 
+                    filter(!is.na(variable))
+            }
+            
+        }
+    })
+print(res %>% arrange(desc(abs(iv))))
+```
+
+based on the data, age category is the only variable with somewhat predictive, but I think it is still okay.
+
+```{r}
+feat_select_iv <- feat_select_recipe %>% 
+    step_rm(age_category)
+```
+
+
+**Variable Importance Using Random Forest Algorithm**
 
 ```{r}
 #| echo: true
-recipe_convert <- recipe_complete %>% 
-    step_num2factor(pclass, levels = c("1","2","3"), ordered = TRUE) %>% 
-    step_mutate(survived = factor(survived, levels = c("0", "1")), skip = TRUE) %>% 
-    step_string2factor(sex, embarked)
-```
+set.seed(123)
+r_forest <- rand_forest(mode = "classification") %>% 
+    set_engine("ranger", importance = "impurity")
 
-### Feature Engineering
+r_forest_wf <- workflow() %>%
+  add_model(r_forest) %>%
+  add_recipe(feat_select_iv)
 
-#### Assigning All features
-
-Since I am using recipe packages, there is one extra step needed to define the role of the whole features.
-
-```{r}
-base_recipe <- recipe_convert %>% 
-    update_role(sex, pclass, age, sib_sp, parch, fare, embarked, ticket_num, new_role = "predictor")
-
-base_recipe$term_info
-```
-
-#### Feature Extraction
-
-Based on previous analysis, there are several features that I can extract from current features. They are:
-
--   Socio economic title from name
-
--   Traveling type that describes traveling condition for each person.
-
--   Fare category from fare value.
-
--   Family size from adding number of sibling, souse, parents ad children.
-
--   Age category
-
--   Ticket frequency
-
-```{r}
-#| echo: true
-recipe_extract <- base_recipe %>% 
-  step_mutate(ses_name = case_when(name_decoder(name) %in% c("Mr", "Miss", "Mrs", "Master") ~ name_decoder(name),
-                                   TRUE ~ "Other") %>%
-                  factor(levels = c("Mr", "Miss", "Mrs", "Master", "Other")),
-              fare_category = factor(case_when(between(round(fare), 0, 8) ~ "1. < 7",
-                                     between(round(fare), 9, 15) ~ "2. 8-15",
-                                     between(round(fare), 16, 25) ~ "3. 16-25", 
-                                     between(round(fare), 26, 35) ~ "4. 26-35", 
-                                     between(round(fare), 36, 50) ~ "5. 36-50", 
-                                     TRUE ~ "6. >= 50"), levels = c("1. < 7", "2. 8-15",
-                                                                    "3. 16-25", "4. 26-35",
-                                                                    "5. 36-50", "6. >= 50")),
-              traveling_type = factor(case_when(age <= 10 & parch == 0 ~ "children w/o parents",
-                                         age <= 10 & between(parch, 1, 2) ~ "children w/ parent",
-                                         sib_sp == 0 & parch == 0 ~ "Single Trip",
-                                         sib_sp > 0 | parch > 0 ~ "Family Trip"),
-                                      levels = c("children w/o parents",
-                                                 "children w/ parent",
-                                                 "Single Trip",
-                                                 "Family Trip")),
-              family_size = coalesce(sib_sp, 0) + coalesce(parch, 0),
-              age_category = factor(case_when(between(round(age), 0, 5) ~ "1. 0-5",
-                           between(round(age), 6, 10) ~ "2. 6-10",
-                           between(round(age), 11, 17) ~ "3. 11-17",
-                           between(round(age), 18, 30) ~ "4. 18-30",
-                           between(round(age), 31, 40) ~ "5. 31-40",
-                           between(round(age), 41, 60) ~ "6. 41-60",
-                           TRUE ~ "7. >60"), levels = c("1. 0-5", "2. 6-10",
-                                                        "3. 11-17", "4. 18-30",
-                                                        "5. 31-40", "6. 41-60",
-                                                        "7. >60")),
-              role = "predictor")
-
-recipe_extract %<>%
-    step_rm(sib_sp, parch)
-```
-
-#### Feature Selection
-
-In machine learning model, there is a Jargon known as **"garbage in, garbage out"**. It means, if we feed our model with garbage (irrelevant and un-useful features) then we will get another garbage as the output. Hence, feature selection is very important.
-
-# Feature Importance
-
-Feature importance is one of feature selection method that using a model to asses how important a feature to the model. Assuming all the variables above were getting used. I will measure how important each variable to predict the target variable. I will use simple logistic regression to build the measurement.
-
-There are several types of variable importance measurement that can be done in R, they are permutation based, variance based and shapley based. While for the metrics, we can use accuracy, f1 score, roc_auc, and so on.
-
-```{r}
-#| warning: false
-predict_kern <- function(object, newdata = train) {kernlab::predict(object, newdata) %>% mutate_all(as.numeric) %>% .[[".pred_class"]]}
-predict_kern_frame <- function(object, newdata = train) {kernlab::predict(object, newdata) %>% mutate_all(as.numeric) }
-
-logit_engine <- logistic_reg(penalty = c("roc_auc", "accuracy", "f_meas"))
-
-logit_wf <- workflow() %>%
-  add_model(logit_engine) %>%
-  add_recipe(recipe_extract)
-
-logit_mdl <- logit_wf %>%
+r_forest_mdl <- r_forest_wf %>%
   fit_resamples(cross_val)
 
-collect_metrics(logit_mdl)
+collect_metrics(r_forest_mdl)
 ```
 
-Taking all the variables into account gives me about 86% area under the curve and 82% accuracy which is too low. Why I said this is too low? It is because by using only gender, I can predict the survival rate for male and female with 75% accuracy. Considering the whole variables, I just increase the accuracy about 7%. This is quite embarrassing. I assume that there is something wrong with the features I used. In order to prove this, I will use variable importance to check the importance of the features to the model.
 
 ```{r}
- #| warning: false
-logit_mdl <- logit_wf %>%
-  fit(train_set)
+rf_fit <- r_forest_wf %>% 
+    fit(data = train_set)
 
-set.seed(453)
-p_firm_method <- logit_mdl %>%
-    extract_fit_parsnip() %>%
-    vi(
-        method = "firm",
-        train = juice(recipe_extract %>% prep()) %>% mutate(survived = survived),
-        target = "survived",
-        metric = "roc_auc",
-        pred_wrapper = predict_kern,
-        event_level = "first",
-        feature_names = c("sex","embarked","pclass","family_size","ses_name","age_category",
-                          "fare_category", "traveling_type", "family_size", "ticket_num", 
-                          "age", "fare")
-    ) %>%
-  ggplot(aes(x = reorder(Variable, desc(Importance)), y = Importance)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  # ggtitle(bquote(FeatureImportance^2))
-  labs(title = expression(paste("Feature Importance using ", FIRM^1," Method")))
+answer <- read.csv(here::here("data/titanic/titanic.csv")) %>% 
+    mutate(survived = as.factor(Survived))
 
-p_permute_method <- logit_mdl %>%
-    extract_fit_parsnip() %>%
-    vi(
-        method = "permute",
-        train = juice(recipe_extract %>% prep()) %>% mutate(survived = survived),
-        target = "survived",
-        metric = "roc_auc",
-        pred_wrapper = predict_kern,
-        # pred_wrapper = kernlab::pred,
-        # event_level = "first",
-        feature_names = c("sex","embarked","pclass","family_size","ses_name","age_category",
-                          "fare_category", "traveling_type", "family_size", "ticket_num",
-                          "age", "fare")
-    ) %>%
-  ggplot(aes(x = reorder(Variable, desc(Importance)), y = Importance)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  labs(title = expression(paste("Feature Importance using ", PERMUTE^2," Method")))
+rf_testing_pred <- 
+  predict(rf_fit, test_set) %>% 
+  bind_cols(predict(rf_fit, test_set, type = "prob")) %>% 
+  bind_cols(test_set %>% select(survived))
 
-ggarrange(p_firm_method, p_permute_method, ncol = 1, nrow = 2)
+rf_testing_pred %>% 
+  accuracy(truth = survived, .pred_class)
 ```
 
-As expected, the sex and ses_name variables are the most important variables on both measurement. Another thing for sure, `family_num` have no importance for both measurements. This is expected. Since family_num is the total of addition between`sib_sp` and `parch` variable, hence they will naturally be highly correlated to each other. Now, the next question is, which feature should be used? More feature will explain more variability, but in fact it will make the model easier to be prone to overfit. Since family number is proven has no effect than sip_sp and parch, then I will just remove it from the model.
+```{r}
+rf_fit %>% 
+    extract_fit_parsnip() %>% 
+    vip(16)
+```
 
-Another important thing from the variable importance here is that, in both measurement, `fare` and `embarked` are both on the last list with the lowest importance. For me, this is a sign that indicates that both of the variables are removable. Since, I have fare_category that represents fare, I think I will just drop the fare and use the fare category that indicates better importance.
-
-With these findings, what I would like to do is getting the feature that maximizes the performance of gender, and remove the one that has no effect.
+Random forest indicates that all variables have some effect to the dependent variable so I will keep using them all.
 
 ```{r}
-#| echo: true
-#| warning: false
-# base_recipe <- recipe_extract
+# set the name of the variable
+# var_names <- feat_transform_recipe %>%
+#     step_select(all_predictors()) %>%
+#     prep() %>%
+#     bake(NULL) %>%
+#     colnames()
 # 
-# main_pred <- c("sex")
+# df_final <- NULL
+# temp_var <- var_names
+# for (i in seq(length(var_names))){
+#     cat(paste("iteration ", i, "\n"))
+#     cat(paste("Getting Feature No ", i, "\n"))
+#     temp_result <- NULL
+#     # print(temp_result)
+#     print(paste("total variables to check : ", length(temp_var)))
+#     for (var_name in temp_var) {
+#         # print(paste("checking variable of ", var_name, "\n"))
+#         if (is.null(df_final)) {
+#             r_forest_wf <- workflow() %>%
+#                 add_model(r_forest) %>%
+#                 add_recipe(feat_transform_recipe %>% step_rm(!!!setdiff(var_names, var_name)))
+#         } else {
+#             r_forest_wf <- workflow() %>%
+#                 add_model(r_forest) %>%
+#                 add_recipe(feat_transform_recipe %>% step_rm(!!!setdiff(var_names, c(var_name, df_final$variable))))
+#         }
+#         set.seed(123)
+#         r_forest_resamples <- r_forest_wf %>%
+#             fit_resamples(cross_val)
 # 
-# # assuming sex is the main predictor
-# all_pred <- c("ses_name", "pclass", "age","fare_category", "family_size", "family_type", "fare", "embarked")
+#         rf_fit <- r_forest_wf %>%
+#             fit(data = train_set)
+#         if (is.null(temp_result)) {
+#             temp_result <- data.frame(variable = var_name,
+#                                       statistic = collect_metrics(r_forest_resamples)[1,3])
+#         } else {
+#             temp_result <- temp_result %>%
+#                 rbind(data.frame(variable = var_name,
+#                                       statistic = collect_metrics(r_forest_resamples)[1,3]))
+#         }
+#     }
+#     res_resample <- temp_result %>% slice_max(mean, n = 1)
+#     res_acc <- accuracy_vec(test_set$survived, predict(rf_fit, test_set)$.pred_class)
+#     if (!is.null(df_final)) {
+#         if (res_resample$mean[[1]] < (df_final %>% top_n(1, var) %>% pull(mean))[[1]] &
+#             res_acc < (df_final %>% top_n(1, var) %>% pull(res_acc))[[1]]) {
+#             break
+#         }
+#     }
+#     df_final <- df_final %>%
+#         rbind(res_resample %>%
+#                   mutate(res_acc = res_acc,
+#                          var = i))
 # 
-# logit_engine <- logistic_reg()
+#     # } else {
+#     #     res <- temp_result %>% top_n(1, mean) > df
+#     # }
 # 
-# # base model as benchmark
-# mdl_data <- workflow() %>%
-#     add_model(logit_engine) %>%
-#     add_recipe(base_recipe %>% step_select(eval(main_pred), survived)) %>%
-#     fit_resamples(cross_val) %>%
-#     collect_metrics() %>%
-#     mutate(n_features = 1,
-#            feature_name = main_pred,
-#            current_feature = "sex")
-# 
-# for(i in seq(length(all_pred))) {
-#   print(paste("Tes model with", i+1, "features"))
-#   for (feature in all_pred) {
-#     curr_recipe <- base_recipe %>%
-#       step_select(eval(feature), eval(main_pred), survived)
-# 
-#     set.seed(453)
-#     mdl_data <- workflow() %>%
-#       add_model(logit_engine) %>%
-#       add_recipe(curr_recipe) %>%
-#       fit_resamples(cross_val) %>%
-#       collect_metrics() %>%
-#       mutate(n_features = length(main_pred)+1,
-#              feature_name = paste(c(paste(main_pred, collapse = ", "), feature), collapse = ", "),
-#              current_feature = feature) %>%
-#       bind_rows(mdl_data)
-#   }
-#   # select the base model as benchmark
-#   base_model <- mdl_data %>%
-#     filter(n_features == max(n_features) - 1,
-#            feature_name == paste(main_pred, collapse = ", "))
-# 
-#   better_feature <- mdl_data %>%
-#     filter(n_features == max(n_features) & ((.metric == "accuracy" & mean > (base_model %>% filter(.metric == "accuracy") %>% pull(mean))) |
-#              (.metric == "roc_auc" & mean > (base_model %>% filter(.metric == "roc_auc") %>% pull(mean))))) %>%
-#     distinct(current_feature, feature_name, mean, .keep_all = TRUE) %>% 
-#     group_by(feature_name, current_feature) %>%
-#     mutate(n = n()) %>%
-#     filter(n == 2)
-# 
-#   if(nrow(better_feature) == 0) {
-#     break
-#   }
-#   better_feature <- better_feature %>%
-#     summarise(mean = mean(mean)) %>%
-#     ungroup() %>%
-#     filter(mean == max(mean))
-# 
-#   last_model <- mdl_data %>%
-#     filter(feature_name == better_feature$feature_name)
-# 
-#   better_acc <- (base_model %>% filter(.metric == "accuracy") %>% pull(mean)) <=
-#     (last_model %>% filter(.metric == "accuracy") %>% pull(mean))
-# 
-#   better_roc <- (base_model %>% filter(.metric == "roc_auc") %>% pull(mean)) <=
-#     (last_model %>% filter(.metric == "roc_auc") %>% pull(mean))
-# 
-#   if (!better_acc | !better_roc) {
-#     stop("No model generates better performance")
-#   }
-# 
-#   main_pred <- c(main_pred, last_model$current_feature[[1]])
-# 
-#   all_pred <- all_pred[!is.element(all_pred, main_pred)]
-#   print(paste("feature selected is ", better_feature$current_feature))
+#     temp_var <- setdiff(temp_var, df_final$variable)
 # }
+# 
+# unused_var <- setdiff(var_names, df_final$variable)
+# 
+# feat_selected_recipe <- feat_transform_recipe %>%
+#     step_rm(!!!unused_var)
 ```
 
-Based on the feature selection that I have done, there are only 5 features that is proven to have affect to increase the predictability, they are `sex`, `ses_name`, `sib_sp`, `pclass`, and `parch`. Even though it is stated fare_category and age didn't give significant contribution, but as the logic and the data said it contributes to the model.
+## [E. DATA MODELING]{color="title"}
 
-```{r}
-# new_recipe <- my_recipe %>% 
-#   step_rm(family_num, fare, embarked, ticket, cabin, name, ses_name)
-```
-
-#### Feature Transformation
-
-In this case, I think there is no variable that needs to be transformed. So i will skip this process.
-
-### Model Training & Evaluation
-
-Previously, I have built the data understanding for each variables. Now, I will model the data to predict the survival rate. There are currently 9 variables that I will use as features. The question is, what kind of algorithm that should be used to train the data. There are several types of classification algorithm.
+To model the data, I will try to utilize the following model.
 
 -   Logistic regression
 
@@ -973,202 +826,257 @@ Previously, I have built the data understanding for each variables. Now, I will 
 
 -   SVM
 
-Among the 5, logistic regression is the simplest. I will try to train all the models and see which one is the best to fit the data out.
-
-#### Logistic Regression
-
-The code:
+### [Model Training, Evaluation, and Selection]{color="secondary"}
 
 ```{r}
 #| echo: true
+# Logistic  Regression
+set.seed(123)
 logit_eng <- logistic_reg(penalty = "ROC")
 
 logit_wf <- workflow() %>%
   add_model(logit_eng) %>%
-  add_recipe(recipe_extract)
+  add_recipe(feat_select_iv)
 
-logit_mdl <- logit_wf %>%
-  fit(data = train_set)
+logit_resamples <- logit_wf %>%
+  fit_resamples(cross_val)
 
-logit_res <- data.frame(passenger_id = test_set$passenger_id,
-                        truth = as.factor(test_set$survived),
-                        estimate = predict(logit_mdl, test_set)$.pred_class,
-                        prob = predict(logit_mdl, test_set, type = "prob")$.pred_0) %>%
-  left_join(recipe_extract %>% prep() %>% bake(test_set), by = "passenger_id") %>%
-  mutate(cabin = test_set$cabin,
-         age = test_set$age)
-conf_mat(logit_res, truth = truth, estimate = estimate)
-accuracy(logit_res, truth, estimate)
-f_meas(logit_res, truth, estimate)
-roc_curve(logit_res, truth, prob) %>% autoplot()
-roc_auc(logit_res, truth, prob, event_level = "first")
+logit_mdl <- logit_wf %>% 
+    fit(data = train_set)
 ```
 
-```{r test_submission}
-# pred_res <- data.frame(
-#   PassengerId = val_set$passenger_id,
-#   Survived = predict(logit_mdl, val_set)$.pred_class)
-# # we get 0.77511 on the validation set
-# write.csv(pred_res, here::here("logit_titanic_basic.csv"), row.names = FALSE)
-```
-
-#### Decision Tree
-
-```{r}
-# #| echo: true
-# d_tree <- C5_rules()
-# # 
-# d_tree_wf <- workflow() %>%
-#   add_model(d_tree) %>%
-#   add_recipe(recipe_extract)
-# 
-# d_tree_mdl <- d_tree_wf %>%
-#   fit(data = train_set)
-# 
-# d_tree_res <- data.frame(truth = as.factor(test_set$survived),
-#                         estimate =predict(d_tree_mdl, test_set)$.pred_class, prob = predict(d_tree_mdl, test_set, type = "prob")$.pred_0)
-# conf_mat(d_tree_res, truth = truth, estimate = estimate)
-# accuracy(d_tree_res, truth, estimate)
-# f_meas(d_tree_res, truth, estimate)
-# roc_curve(d_tree_res, truth, prob) %>% autoplot()
-# roc_auc(d_tree_res, truth, prob, event_level = "first")
-```
-
-#### Random Forest
-
-```{r}
+```{r d_tree_training}
 #| echo: true
+# decision tree
+d_tree <- C5_rules()
+d_tree_wf <- workflow() %>%
+  add_model(d_tree) %>%
+  add_recipe(feat_select_iv)
+set.seed(123)
+d_tree_resamples <- d_tree_wf %>%
+  fit_resamples(cross_val)
+
+d_tree_mdl <- d_tree_wf %>%
+  fit(data = train_set)
+```
+
+```{r r_forest_training}
+#| echo: true
+# random forest
 r_forest <- rand_forest(mode = "classification")
 
 r_forest_wf <- workflow() %>%
   add_model(r_forest) %>%
-  add_recipe(recipe_extract)
+  add_recipe(feat_select_iv)
+
+set.seed(123)
+r_forest_resamples <- r_forest_wf %>%
+  fit_resamples(cross_val)
 
 r_forest_mdl <- r_forest_wf %>%
   fit(data = train_set)
-
-r_forest_res <- data.frame(truth = as.factor(test_set$survived),
-                        estimate =predict(r_forest_mdl, test_set)$.pred_class, prob = predict(r_forest_mdl, test_set, type = "prob")$.pred_0)
-conf_mat(r_forest_res, truth = truth, estimate = estimate)
-accuracy(r_forest_res, truth, estimate)
-f_meas(r_forest_res, truth, estimate)
-roc_curve(r_forest_res, truth, prob) %>% autoplot()
-roc_auc(r_forest_res, truth, prob, event_level = "first")
 ```
 
-```{r}
-r_forest_pred_res <- data.frame(
-  PassengerId = val_set$passenger_id,
-  Survived = predict(r_forest_mdl, val_set)$.pred_class)
-# we get 0.76076 on the validation set
-write.csv(r_forest_pred_res, here::here("r_forest_ranger_basic.csv"), row.names = FALSE)
-```
-
-#### XGB
-
-```{r}
-my_recipe_xgb <- recipe_extract %>%
-    step_dummy(all_nominal_predictors())
+```{r xgb_training}
 #| echo: true
+# xtreme gradient boosting
+my_recipe_xgb <- feat_select_iv %>%
+    step_dummy(all_nominal_predictors())
+
 xgb <- boost_tree(mode = "classification", engine = "xgboost")
 
 xgb_wf <- workflow() %>%
   add_model(xgb) %>%
   add_recipe(my_recipe_xgb)
 
+set.seed(123)
+xgb_resamples <- xgb_wf %>%
+  fit_resamples(cross_val)
+
 xgb_mdl <- xgb_wf %>%
   fit(data = train_set)
-
-xgb_res <- data.frame(truth = as.factor(test_set$survived),
-                        estimate =predict(xgb_mdl, test_set)$.pred_class, prob = predict(xgb_mdl, test_set, type = "prob")$.pred_0)
-conf_mat(xgb_res, truth = truth, estimate = estimate)
-accuracy(xgb_res, truth, estimate)
-f_meas(xgb_res, truth, estimate)
-roc_curve(xgb_res, truth, prob) %>% autoplot()
-roc_auc(xgb_res, truth, prob, event_level = "first")
 ```
 
-```{r}
-xgb_pred_res <- data.frame(
-  PassengerId = val_set$passenger_id,
-  Survived = predict(xgb_mdl, val_set)$.pred_class)
-# we get 0.74162 on the validation set
-write.csv(xgb_pred_res, here::here("xgb_basic_add_ticket_num.csv"), row.names = FALSE)
-```
-
-#### GBM
-
-```{r}
-my_recipe_xgb <- recipe_extract %>%
-    step_dummy(all_nominal_predictors())
+```{r gbm_training}
 #| echo: true
+# gradient boosting machine
 gbm <- boost_tree(mode = "classification", engine = "lightgbm")
 
 gbm_wf <- workflow() %>%
   add_model(gbm) %>%
   add_recipe(my_recipe_xgb)
+set.seed(123)
+gbm_resamples <- gbm_wf %>%
+  fit_resamples(cross_val)
 
 gbm_mdl <- gbm_wf %>%
   fit(data = train_set)
-
-gbm_res <- data.frame(truth = as.factor(test_set$survived),
-                        estimate =predict(gbm_mdl, test_set)$.pred_class, prob = predict(gbm_mdl, test_set, type = "prob")$.pred_0)
-conf_mat(gbm_res, truth = truth, estimate = estimate)
-accuracy(gbm_res, truth, estimate)
-f_meas(gbm_res, truth, estimate)
-roc_curve(gbm_res, truth, prob) %>% autoplot()
-roc_auc(gbm_res, truth, prob, event_level = "first")
 ```
 
-```{r}
-recipe_extract %>% 
-    prep() %>% 
-    bake(test_set) %>% 
-    mutate(predicted = gbm_res$estimate) %>% 
-    filter(survived == 0, predicted == 1) %>% 
-    select(pclass, sex, embarked, survived, ses_name)
-```
-
-#### SVM
-
-```{r}
+```{r svm_training}
 #| echo: true
+# support vector machine
 svm <- svm_linear(mode = "classification", engine = "kernlab")
 
 svm_wf <- workflow() %>%
   add_model(svm) %>%
-  add_recipe(recipe_extract %>% 
+  add_recipe(feat_transform_recipe %>%
                  step_dummy(all_nominal_predictors()))
+set.seed(123)
+svm_resamples <- svm_wf %>%
+  fit_resamples(cross_val)
 
 svm_mdl <- svm_wf %>%
   fit(data = train_set)
-
-svm_res <- data.frame(truth = as.factor(test_set$survived),
-                        estimate = predict(svm_mdl, test_set)$.pred_class, prob = predict(gbm_mdl, test_set, type = "prob")$.pred_0)
-paste("Confussion matrix SVM\n")
-conf_mat(svm_res, truth = truth, estimate = estimate)
-accuracy(svm_res, truth, estimate)
-f_meas(svm_res, truth, estimate)
-roc_curve(svm_res, truth, prob) %>% autoplot()
-roc_auc(svm_res, truth, prob, event_level = "first")
 ```
+
+```{r mlp_training, verbose=FALSE}
+#| info: false
+#| warning: false
+set.seed(123)
+# multi layer perceptron
+# mlp_engine <- mlp(mode = "classification", penalty = 0.01, epochs = 300,
+#                    hidden_units = 10) %>% 
+#     set_engine("keras", verbose = 0)
+# 
+# mlp_wf <- workflow() %>%
+#     add_model(mlp_engine) %>%
+#     add_recipe(my_recipe_xgb)
+# 
+# mlp_resamples <- mlp_wf %>%
+#     fit_resamples(cross_val)
+# 
+# mlp_mdl <- mlp_wf %>% 
+#     fit(data = train_set)
+```
+
+After training the model, I have the following summary of performance:
 
 ```{r}
-recipe_extract %>% 
-    prep() %>% 
-    bake(test_set) %>% 
-    mutate(predicted = svm_res$estimate) %>% 
-    filter(survived == 0, predicted == 1)
+collect_metrics(svm_resamples) %>% 
+    mutate(algorithm = "svm",
+           accuracy_cv = mean) %>%
+    filter(.metric == 'accuracy') %>% 
+    select(algorithm, accuracy_cv) %>% 
+    cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(svm_mdl, test_set)$.pred_class))) %>% 
+    rbind(collect_metrics(gbm_resamples) %>% 
+        mutate(algorithm = "gbm",
+               accuracy_cv = mean) %>%
+        filter(.metric == 'accuracy') %>% 
+        select(algorithm, accuracy_cv) %>% 
+        cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(gbm_mdl, test_set)$.pred_class)))) %>% 
+    rbind(collect_metrics(xgb_resamples) %>% 
+        mutate(algorithm = "xgb",
+               accuracy_cv = mean) %>%
+        filter(.metric == 'accuracy') %>% 
+        select(algorithm, accuracy_cv) %>% 
+        cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(xgb_mdl, test_set)$.pred_class)))) %>% 
+    rbind(collect_metrics(r_forest_resamples) %>% 
+        mutate(algorithm = "random forest",
+               accuracy_cv = mean) %>%
+        filter(.metric == 'accuracy') %>% 
+        select(algorithm, accuracy_cv) %>% 
+        cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(r_forest_mdl, test_set)$.pred_class)))) %>% 
+    rbind(collect_metrics(d_tree_resamples) %>% 
+        mutate(algorithm = "decision tree",
+               accuracy_cv = mean) %>%
+        filter(.metric == 'accuracy') %>% 
+        select(algorithm, accuracy_cv) %>% 
+        cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(d_tree_mdl, test_set)$.pred_class)))) %>% 
+    rbind(collect_metrics(logit_resamples) %>% 
+        mutate(algorithm = "logistic regression",
+               accuracy_cv = mean) %>%
+        filter(.metric == 'accuracy') %>% 
+        select(algorithm, accuracy_cv) %>% 
+        cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(logit_mdl, test_set)$.pred_class))))
+    # rbind(collect_metrics(mlp_resamples) %>% 
+    #     mutate(algorithm = "mlp",
+    #            accuracy_cv = mean) %>%
+    #     filter(.metric == 'accuracy') %>% 
+    #     select(algorithm, accuracy_cv) %>% 
+    #     cbind(data.frame(accuracy_test = accuracy_vec(as.factor(test_set$survived), predict(mlp_mdl, test_set)$.pred_class)))) %>% 
+    # mutate(avg_ = (accuracy_cv + accuracy_test)/2) %>% 
+    # arrange(desc(accuracy_cv))
 ```
+
+I think, the SVM model is the best here since it gives good predictin result to the test data.
+
+### Model Tuning
+
+Here I will fine tune the SVM model
 
 ```{r}
-svm_pred_res <- data.frame(
-  PassengerId = val_set$passenger_id,
-  Survived = predict(svm_mdl, val_set)$.pred_class)
-# we get 0.77511 on the validation set
-write.csv(svm_pred_res, here::here("svm_basic.csv"), row.names = FALSE)
+cv_new <- mc_cv(train_set, times = 10)
+set.seed(123)
+svm <- svm_linear(mode = "classification", engine = "kernlab",
+                  cost = tune(),
+                  margin = tune())
+
+tune_grid <- grid_random(
+    cost(),
+    svm_margin(),
+    size = 10
+)
+
+
+
+svm_wf <- workflow() %>%
+  add_model(svm) %>%
+  add_recipe(feat_select_iv)
+set.seed(123)
+svm_resamples <- svm_wf %>%
+  tune_grid(
+      resamples = cv_new,
+      grid = tune_grid
+  )
+
+svm_tuned_wf <- svm_wf %>%
+    finalize_workflow(svm_resamples %>% select_best("accuracy"))
+
+svm_mdl_tuned <- svm_tuned_wf %>%
+  fit(train_set)
+
+# mlp_engine <- mlp(mode = "classification",
+#                   penalty = tune(),
+#                   epochs = tune(),
+#                   hidden_units = tune()) %>% 
+#     set_engine("keras", verbose = 0)
+# 
+# tune_grid <- expand.grid(
+#     hidden_units = c(10, 8, 7),
+#     epochs = c(200, 250),
+#     penalty = c(0, 0.01, 0.1)
+# )
+# 
+# training_set_new <- my_recipe_xgb %>% 
+#     # step_select(all_predictors(), survived) %>% 
+#     prep() %>% 
+#     bake(NULL)
+# 
+# cv_new <- mc_cv(train_set, times = 5)
+# 
+# mlp_wf <- workflow() %>%
+#   add_model(mlp_engine) %>%
+#   add_recipe(my_recipe_xgb)
+# 
+# mlp_tuned <- mlp_wf %>%
+#     tune_grid(
+#         resamples = cv_new,
+#         grid = tune_grid
+#     )
+# 
+# tuned_mlp_param <- mlp_tuned %>%
+#     select_best("accuracy")
+# 
+# mlp_tuned_wf <- mlp_wf %>%
+#     finalize_workflow(tuned_mlp_param)
+# 
+# mlp_tuned_mdl <- mlp_tuned_wf %>%
+#     fit(train_set)
+# # 
+accuracy_vec(as.factor(answer$Survived), predict(svm_mdl, val_set)$.pred_class)
+accuracy_vec(as.factor(answer$Survived), predict(svm_mdl_tuned, val_set)$.pred_class)
+accuracy_vec(as.factor(train_set$survived), predict(svm_mdl_tuned, train_set)$.pred_class)
+accuracy_vec(as.factor(test_set$survived), predict(svm_mdl_tuned, test_set)$.pred_class)
 ```
 
-### Model Evaluation
-
-Based on the model I have trained previously, it seems
